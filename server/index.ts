@@ -83,8 +83,16 @@ app.use((req, res, next) => {
   if (app.get("env") === "development") {
     // Dynamic import keeps `vite` (devDependency) out of the production bundle's
     // startup path — it's only resolved when actually running in development.
-    const { setupVite } = await import("./vite");
-    await setupVite(app, httpServer);
+    // If it can't load, we're really in a production image with NODE_ENV
+    // mis-set to "development": don't crash-loop — fall back to the prebuilt
+    // client so a single bad env var doesn't take the whole service down.
+    try {
+      const { setupVite } = await import("./vite");
+      await setupVite(app, httpServer);
+    } catch (err) {
+      log(`vite unavailable (${(err as Error).message}); serving prebuilt client instead — set NODE_ENV=production`);
+      serveStatic(app);
+    }
   } else {
     serveStatic(app);
   }
