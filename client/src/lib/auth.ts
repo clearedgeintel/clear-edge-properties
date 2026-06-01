@@ -13,45 +13,68 @@ const mockSession = {
   }
 };
 
-export const auth = {
-  async signInWithMagicLink(email: string) {
-    if (isDevelopment) {
-      // In development mode, call the backend signin endpoint
-      console.log('Development mode: Signing in with backend for', email);
-      
-      try {
-        const response = await fetch('/api/auth/signin', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify({ email }),
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          // Trigger auth state change after successful signin
-          setTimeout(() => {
-            window.dispatchEvent(new CustomEvent('auth-signin', { detail: { email, user: data.user } }));
-          }, 500);
-        } else {
-          throw new Error('Failed to sign in');
-        }
-      } catch (error) {
-        console.error('Development signin failed:', error);
-        throw error;
-      }
-      return;
-    }
+// In development the backend provisions a mock user; all sign-in methods route
+// through it so local dev doesn't need a real Supabase project.
+async function devSignin(email: string) {
+  const response = await fetch('/api/auth/signin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ email }),
+  });
+  if (!response.ok) throw new Error('Failed to sign in');
+  const data = await response.json();
+  setTimeout(() => {
+    window.dispatchEvent(new CustomEvent('auth-signin', { detail: { email, user: data.user } }));
+  }, 300);
+}
 
+// Returns true if a session was established immediately (vs. needing email
+// confirmation, which only happens when Supabase "Confirm email" is enabled).
+export interface SignUpResult {
+  session: boolean;
+  message?: string;
+}
+
+export const auth = {
+  async signInWithPassword(email: string, password: string) {
+    if (isDevelopment) return devSignin(email);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  },
+
+  async signUpWithPassword(email: string, password: string): Promise<SignUpResult> {
+    if (isDevelopment) {
+      await devSignin(email);
+      return { session: true };
+    }
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: window.location.origin },
+    });
+    if (error) throw error;
+    // If email confirmation is disabled in Supabase, a session is returned and
+    // the user is signed in immediately. Otherwise they must confirm by email.
+    if (data.session) return { session: true };
+    return { session: false, message: 'Account created. Check your email to confirm, then sign in.' };
+  },
+
+  async signInWithGoogle() {
+    if (isDevelopment) return devSignin('admin@dev.com');
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin },
+    });
+    if (error) throw error;
+  },
+
+  async signInWithMagicLink(email: string) {
+    if (isDevelopment) return devSignin(email);
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: {
-        emailRedirectTo: window.location.origin,
-      },
+      options: { emailRedirectTo: window.location.origin },
     });
-    
     if (error) throw error;
   },
 

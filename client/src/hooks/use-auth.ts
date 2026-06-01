@@ -63,8 +63,16 @@ export function useAuth() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = async (email: string) => {
-    await auth.signInWithMagicLink(email);
+  const signIn = async (email: string, password: string) => {
+    await auth.signInWithPassword(email, password);
+  };
+
+  const signUp = async (email: string, password: string) => {
+    return auth.signUpWithPassword(email, password);
+  };
+
+  const signInWithGoogle = async () => {
+    await auth.signInWithGoogle();
   };
 
   const signOut = async () => {
@@ -87,6 +95,8 @@ export function useAuth() {
     hasActiveSubscription,
     isAdmin,
     signIn,
+    signUp,
+    signInWithGoogle,
     signOut,
   };
 }
