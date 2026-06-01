@@ -1,0 +1,6 @@
+address,city,state,zipcode,price,bedrooms,bathrooms,sqft,propertytype,score,estimatedroi,zillowid,published
+123 Main St,Austin,TX,78701,450000,3,2.0,1500,single-family,85,7.2,123456789,true
+456 Oak Ave,Dallas,TX,75201,320000,2,1.5,1200,townhouse,78,6.8,987654321,true
+789 Pine Rd,Houston,TX,77001,580000,4,3.0,2200,single-family,92,8.1,456789123,true
+321 Elm St,San Antonio,TX,78201,275000,2,2.0,1100,condo,72,5.9,789123456,true
+654 Maple Dr,Fort Worth,TX,76101,395000,3,2.5,1800,single-family,81,7.5,147258369,true

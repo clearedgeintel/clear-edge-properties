@@ -1,0 +1,80 @@
+Absolutely. Here's a **copy-paste Replit prompt** you can use to generate a **full-featured real estate investor platform** prototype:
+
+---
+
+> **"Build a full-stack SaaS platform called *ClearEdge Deals* for real estate investors. This is a paid subscription site where users can browse, analyze, and manage high-scoring investment properties using a proprietary scoring system.**
+>
+> ### 🧱 Tech Stack:
+>
+> * Next.js (app router) + TypeScript + Tailwind CSS for UI
+> * Supabase (PostgreSQL + Auth + Storage) for backend
+> * Stripe for subscription payments (use Checkout + webhook integration)
+> * Prisma for ORM + Supabase integration
+> * Optional: use OpenAI or GPT-4 for property commentary
+>
+> ### 🧠 Core Features (MVP):
+>
+> 1. **Secure Sign-Up & Subscription Flow**
+>
+>    * Supabase Auth + Stripe integration
+>    * Free tier sees blurred listings with prompt to subscribe
+>    * Paid users unlock all features
+> 2. **Property Browser**
+>
+>    * Card grid of listings with 0–100 ClearEdge score badge
+>    * Filters: score range, ZIP, price, asset type
+>    * Sort: best score, newest, cheapest
+>    * Listing drawer shows full metrics, comps, photos, and map
+> 3. **Automated LOI Generator**
+>
+>    * One-click “Generate LOI” button on property
+>    * Pre-fills buyer/seller, price, terms
+>    * PDF download or email send
+> 4. **AI Commentary & Score Breakdown**
+>
+>    * Each listing shows:
+>
+>      > *“Score = 91: Undervalued for ZIP, strong rent comps, 6.3% projected cap rate”*
+>    * Uses GPT or custom logic
+> 5. **Deal Tracker / CRM**
+>
+>    * Save listings to “Watching,” “Contacted,” “Offer Sent,” etc.
+>    * Add notes and reminders
+> 6. **Quick Underwriting Tool**
+>
+>    * Browser-based cap rate, DSCR, CoC calculator prefilled from listing
+>    * Toggle financing terms to see outcomes
+> 7. **Local Market Dashboard**
+>
+>    * ZIP-level stats: avg score, price/sqft, rent growth, inventory
+>    * Heatmap view (leaflet.js or Mapbox)
+>
+> ### 🔐 Admin Panel:
+>
+> * Upload listings manually or via CSV
+> * Add images to Supabase Storage
+> * Toggle visibility and publish status
+>
+> ### ⚡ Stretch Goals (optional):
+>
+> * Investor Watchlists + Email Alerts for new deals
+> * Property Image Analyzer using GPT-4 Vision (detects red flags)
+> * Broker/wholesaler portal to submit off-market deals
+> * API access to score user-submitted properties
+> * Export “Investment Memo” PDF with listing highlights + comps
+>
+> ### 💾 Deliverables:
+>
+> * Full codebase with reusable components
+> * `.env.example` with all needed keys:
+>
+>   * `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `STRIPE_SECRET_KEY`, etc.
+> * Prisma schema for Listings, Users, and SavedDeals
+> * Initial seed script to create test users and 10 fake listings
+> * Markdown `README` with setup + deploy instructions
+>
+> Please scaffold this app with working auth, dashboard, and listing display. Use clean Tailwind design and basic mobile responsiveness. Add comments so I can extend features later."\*\*
+
+---
+
+Would you like me to generate the `prisma.schema` file and `.env` starter for this as well?

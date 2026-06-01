@@ -1,0 +1,203 @@
+// --- Configuration Settings ---
+const config = {
+  downPaymentPercent: 20,
+  closingCostPercent: 3,
+  loanInterestRate: 7,
+  loanTermYears: 30,
+  propertyTaxRate: 1.25,
+  monthlyInsuranceEstimate: 100,
+  monthlyHOAFees: 0,
+  vacancyRatePercent: 5,
+  annualAppreciationRate: 3,
+  principalPaydownEstimatePercent: 6,
+  scoreWeights: {
+    cashOnCashROI: 0.30,
+    dscr: 0.20,
+    capRate: 0.20,
+    fiveYearGain: 0.20,
+    equityAtPurchase: 0.10
+  },
+  normalizationRanges: {
+    cashOnCashROI: [0, 15],
+    dscr: [1, 2],
+    capRate: [4, 10],
+    fiveYearGain: [0, 100000],
+    equityAtPurchase: [0, 50000]
+  }
+};
+
+// --- Helper Functions ---
+function parseSqFt(sizeStr) {
+  if (!sizeStr) return 0;
+  if (sizeStr.includes("acres")) return parseFloat(sizeStr) * 43560;
+  return parseFloat(sizeStr.replace(/[^\d.]/g, '')) || 0;
+}
+
+function normalize(value, min, max) {
+  if (value === null || isNaN(value)) return 0;
+  if (max === min) return 0;
+  return Math.max(0, Math.min(1, (value - min) / (max - min)));
+}
+
+function calculateMonthlyMortgage(principal, annualInterestRate, loanTermYears) {
+  if (principal <= 0 || loanTermYears <= 0) return 0;
+  const monthlyInterestRate = annualInterestRate / 12;
+  const totalPayments = loanTermYears * 12;
+  return monthlyInterestRate === 0
+    ? principal / totalPayments
+    : principal * monthlyInterestRate / (1 - Math.pow(1 + monthlyInterestRate, -totalPayments));
+}
+
+function categorizeMarket(price) {
+  if (price < 100000) return "Budget (<$100k)";
+  if (price < 300000) return "Entry ($100k–$300k)";
+  if (price < 600000) return "Mid-Tier ($300k–$600k)";
+  return "Luxury ($600k+)";
+}
+
+// --- Lead Scoring Class ---
+class ZillowLeadScorer {
+  constructor(config) {
+    this.config = config;
+  }
+
+  _extractPropertyData(raw) {
+    return {
+      address: raw.address || 'N/A',
+      homeType: raw.homeType || 'N/A',
+      price: parseFloat(raw.price) || 0,
+      rentEstimate: parseFloat(raw.rentEstimate || 0) || 0,
+      zestimate: parseFloat(raw.zestimate || 0) || 0,
+      taxAssessedValue: parseFloat(raw.taxAssessedValue || 0) || 0,
+      sizeSqFt: parseSqFt(raw.size),
+      zpid: raw.zpid || null,
+      numBeds: parseFloat(raw.numBeds || 0) || null,
+      numBaths: parseFloat(raw.numBaths || 0) || null,
+      yearBuilt: parseFloat(raw.yearBuilt || 0) || null,
+      url: raw.url || null,
+      listingStatus: raw.listingStatus || null,
+      daysOnZillow: parseFloat(raw.daysOnZillow || 0) || null,
+      isForeclosure: raw.isForeclosure || false,
+      isNewConstruction: raw.isNewConstruction || false
+    };
+  }
+
+  _calculateFinancials(p) {
+    const cfg = this.config;
+    const downPayment = (cfg.downPaymentPercent / 100) * p.price;
+    const closingCosts = (cfg.closingCostPercent / 100) * p.price;
+    const loanAmount = p.price - downPayment;
+
+    const monthlyMortgage = calculateMonthlyMortgage(
+      loanAmount, cfg.loanInterestRate / 100, cfg.loanTermYears
+    );
+
+    const monthlyTaxes = (cfg.propertyTaxRate / 100 * p.price) / 12;
+    const monthlyExpenses = monthlyMortgage + monthlyTaxes + cfg.monthlyInsuranceEstimate + cfg.monthlyHOAFees;
+    const monthlyCashFlow = p.rentEstimate - monthlyExpenses;
+    const annualCashFlow = monthlyCashFlow * 12;
+    const totalCashNeeded = downPayment + closingCosts;
+
+    const capRate = p.price > 0 ? ((p.rentEstimate * 12 - monthlyTaxes * 12) / p.price) * 100 : 0;
+    const grossRentMultiplier = p.rentEstimate > 0 ? p.price / (p.rentEstimate * 12) : null;
+    const cashOnCashROI = totalCashNeeded > 0 ? (annualCashFlow / totalCashNeeded) * 100 : null;
+    const dscr = monthlyMortgage > 0 ? p.rentEstimate / monthlyMortgage : null;
+
+    const principalPaidFirstYear = loanAmount * (cfg.principalPaydownEstimatePercent / 100);
+    const fiveYearFuturePrice = p.price * Math.pow(1 + cfg.annualAppreciationRate / 100, 5);
+    const fiveYearGain = fiveYearFuturePrice - p.price;
+    const equityAtPurchase = Math.max(p.zestimate, p.taxAssessedValue) - p.price;
+
+    // Additional Metrics
+    const breakevenRent = monthlyExpenses;
+    const annualNOI = (p.rentEstimate * 12) - (monthlyTaxes * 12 + cfg.monthlyInsuranceEstimate * 12 + cfg.monthlyHOAFees * 12);
+    const grossYieldPercent = p.price > 0 ? (p.rentEstimate * 12 / p.price) * 100 : 0;
+    const rentToPriceRatio = p.price > 0 ? p.rentEstimate / p.price : 0;
+    const valueToTaxRatio = p.taxAssessedValue > 0 ? p.zestimate / p.taxAssessedValue : null;
+    const cashFlowPerSqFt = p.sizeSqFt > 0 ? monthlyCashFlow / p.sizeSqFt : null;
+
+    return {
+      downPayment, closingCosts, totalCashNeeded, loanAmount, monthlyMortgage,
+      monthlyTaxes, monthlyExpenses, monthlyCashFlow, annualCashFlow,
+      capRate, grossRentMultiplier, cashOnCashROI, dscr,
+      principalPaidFirstYear, fiveYearFuturePrice, fiveYearGain, equityAtPurchase,
+      breakevenRent, annualNOI, grossYieldPercent, rentToPriceRatio, valueToTaxRatio, cashFlowPerSqFt,
+      isCashFlowNegative: monthlyCashFlow < 0,
+      isRentEstimateMissing: !p.rentEstimate || p.rentEstimate <= 0
+    };
+  }
+
+ _calculateInvestmentScore(f) {
+  const { scoreWeights: w, normalizationRanges: r } = this.config;
+
+  const normCashROI = normalize(f.cashOnCashROI, ...r.cashOnCashROI);
+  const normDSCR = normalize(f.dscr, ...r.dscr);
+  const normCapRate = normalize(f.capRate, ...r.capRate);
+  const norm5yrGain = normalize(f.fiveYearGain, ...r.fiveYearGain);
+  const normEquity = normalize(f.equityAtPurchase, ...r.equityAtPurchase);
+
+  return (
+    normCashROI * w.cashOnCashROI +
+    normDSCR * w.dscr +
+    normCapRate * w.capRate +
+    norm5yrGain * w.fiveYearGain +
+    normEquity * w.equityAtPurchase
+  );
+}
+
+  processLead(item) {
+    const p = this._extractPropertyData(item.json);
+    const f = this._calculateFinancials(p);
+    const score = this._calculateInvestmentScore(f);
+
+    return {
+      json: {
+        ...p,
+        price: +p.price.toFixed(2),
+        rentEstimate: +p.rentEstimate.toFixed(2),
+        zestimate: p.zestimate ? +p.zestimate.toFixed(2) : null,
+        taxAssessed: p.taxAssessedValue ? +p.taxAssessedValue.toFixed(2) : null,
+        sizeSqFt: +p.sizeSqFt.toFixed(2),
+        pricePerSqFt: p.sizeSqFt > 0 ? +(p.price / p.sizeSqFt).toFixed(2) : null,
+        marketCategory: categorizeMarket(p.price),
+
+        downPayment: +f.downPayment.toFixed(2),
+        closingCosts: +f.closingCosts.toFixed(2),
+        totalCashNeeded: +f.totalCashNeeded.toFixed(2),
+        monthlyMortgage: +f.monthlyMortgage.toFixed(2),
+        monthlyTaxes: +f.monthlyTaxes.toFixed(2),
+        monthlyExpenses: +f.monthlyExpenses.toFixed(2),
+        monthlyCashFlow: +f.monthlyCashFlow.toFixed(2),
+        annualCashFlow: +f.annualCashFlow.toFixed(2),
+        capRatePercent: +f.capRate.toFixed(2),
+        grossRentMultiplier: f.grossRentMultiplier ? +f.grossRentMultiplier.toFixed(2) : null,
+        cashOnCashROI: f.cashOnCashROI ? +f.cashOnCashROI.toFixed(2) : null,
+        dscr: f.dscr ? +f.dscr.toFixed(2) : null,
+        fiveYearGain: +f.fiveYearGain.toFixed(2),
+        equityAtPurchase: +f.equityAtPurchase.toFixed(2),
+        principalPaidFirstYear: +f.principalPaidFirstYear.toFixed(2),
+        breakevenRent: +f.breakevenRent.toFixed(2),
+        annualNOI: +f.annualNOI.toFixed(2),
+        grossYieldPercent: +f.grossYieldPercent.toFixed(2),
+        rentToPriceRatio: +f.rentToPriceRatio.toFixed(4),
+        valueToTaxRatio: f.valueToTaxRatio ? +f.valueToTaxRatio.toFixed(2) : null,
+        cashFlowPerSqFt: f.cashFlowPerSqFt ? +f.cashFlowPerSqFt.toFixed(2) : null,
+
+        isCashFlowNegative: f.isCashFlowNegative,
+        isRentEstimateMissing: f.isRentEstimateMissing,
+        isBelowZestimate: f.zestimate > 0 ? p.price < f.zestimate : null,
+        isBelowTaxAssessed: f.taxAssessedValue > 0 ? p.price < f.taxAssessedValue : null,
+
+        investmentScorePercent: +(score * 100).toFixed(2)
+      }
+    };
+  }
+
+  processLeads(items) {
+    return Array.isArray(items) ? items.map(i => this.processLead(i)) : [];
+  }
+}
+
+// --- Execution ---
+const zillowScorer = new ZillowLeadScorer(config);
+return zillowScorer.processLeads(items);

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClearEdge Intelligence - Real Estate Scoring Config</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f2f4f8;
+      margin: 0;
+      padding: 2rem;
+      color: #2c3e50;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 2rem;
+      color: #1a202c;
+    }
+    .brand-header {
+      text-align: center;
+      font-size: 1.25rem;
+      color: #2b6cb0;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+    }
+    h2 {
+      color: #fff;
+      background-color: #2b6cb0;
+      padding: 0.5rem 1rem;
+      border-radius: 4px 4px 0 0;
+      margin: 0 -1.5rem 1rem;
+    }
+    .section {
+      background: #fff;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+    }
+    label {
+      display: block;
+      margin-top: 1rem;
+      font-weight: 600;
+    }
+    input[type="number"], input[type="text"], select {
+      width: 100%;
+      padding: 0.6rem;
+      margin-top: 0.3rem;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      background: #f9fafb;
+      font-size: 1rem;
+    }
+    button {
+      background-color: #2b6cb0;
+      color: white;
+      padding: 0.8rem 1.5rem;
+      font-size: 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      display: block;
+      margin: 2rem auto 0;
+    }
+    button:hover {
+      background-color: #2c5282;
+    }
+  </style>
+</head>
+<body>
+  <div class="brand-header">ClearEdge Intelligence</div>
+  <h1>Real Estate Deal Configurator</h1>
+
+  <div class="section">
+    <h2>Search Filters</h2>
+    <label>Location <input type="text" id="searchLocation" placeholder="City, Zip Code, Neighborhood"></label>
+    <label>Minimum Beds <input type="number" id="searchMinBeds" value="1"></label>
+    <label>Minimum Baths <input type="number" id="searchMinBaths" value="1"></label>
+    <label>Min Price <input type="number" id="searchMinPrice" value="0"></label>
+    <label>Max Price <input type="number" id="searchMaxPrice" value="1000000"></label>
+    <label>Min SqFt <input type="number" id="searchMinSqft" value="0"></label>
+    <label>Max SqFt <input type="number" id="searchMaxSqft" value="10000"></label>
+    <label>Home Type
+      <select id="searchHomeType">
+        <option value="">Any</option>
+        <option value="Single Family">Single Family</option>
+        <option value="Condo">Condo</option>
+        <option value="Townhouse">Townhouse</option>
+        <option value="Multi-Family">Multi-Family</option>
+        <option value="Manufactured">Manufactured</option>
+        <option value="Land">Land</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="section">
+    <h2>Webhook Target</h2>
+    <label>Webhook URL <input type="text" id="webhookUrl" placeholder="https://example.com/webhook"></label>
+  </div>
+
+  <div class="section">
+    <h2>Financial Assumptions</h2>
+    <label>Down Payment (%) <input type="number" id="downPaymentPercent" value="20"></label>
+    <label>Closing Costs (%) <input type="number" id="closingCostPercent" value="3"></label>
+    <label>Loan Interest Rate (%) <input type="number" id="loanInterestRate" value="7"></label>
+    <label>Loan Term (Years) <input type="number" id="loanTermYears" value="30"></label>
+    <label>Property Tax Rate (%) <input type="number" id="propertyTaxRate" value="1.25"></label>
+    <label>Monthly Insurance ($) <input type="number" id="monthlyInsuranceEstimate" value="100"></label>
+    <label>HOA Fees ($) <input type="number" id="monthlyHOAFees" value="0"></label>
+    <label>Vacancy Rate (%) <input type="number" id="vacancyRatePercent" value="5"></label>
+    <label>Annual Appreciation Rate (%) <input type="number" id="annualAppreciationRate" value="3"></label>
+    <label>Year 1 Principal Paydown (%) <input type="number" id="principalPaydownEstimatePercent" value="6"></label>
+  </div>
+
+  <div class="section">
+    <h2>Score Weights (Sum to 1.0)</h2>
+    <label>Cash-on-Cash ROI <input type="number" id="weightCashROI" value="0.30" step="0.01"></label>
+    <label>DSCR <input type="number" id="weightDSCR" value="0.20" step="0.01"></label>
+    <label>Cap Rate <input type="number" id="weightCapRate" value="0.20" step="0.01"></label>
+    <label>5-Year Gain <input type="number" id="weight5yrGain" value="0.20" step="0.01"></label>
+    <label>Equity at Purchase <input type="number" id="weightEquity" value="0.10" step="0.01"></label>
+  </div>
+
+  <div class="section">
+    <h2>Normalization Ranges</h2>
+    <label>Cash-on-Cash ROI <input type="text" id="rangeCashROI" value="0,15"></label>
+    <label>DSCR <input type="text" id="rangeDSCR" value="1,2"></label>
+    <label>Cap Rate <input type="text" id="rangeCapRate" value="4,10"></label>
+    <label>5-Year Gain <input type="text" id="range5yrGain" value="0,100000"></label>
+    <label>Equity at Purchase <input type="text" id="rangeEquity" value="0,50000"></label>
+  </div>
+
+  <button onclick="submitConfig()">Submit Config</button>
+
+  <script>
+    function parseRange(val) {
+      const [min, max] = val.split(',').map(Number);
+      return [min || 0, max || 0];
+    }
+
+    function submitConfig() {
+      const webhookUrl = document.getElementById('webhookUrl').value;
+      if (!webhookUrl) return alert('Please enter a valid webhook URL.');
+
+      const config = {
+        searchFilters: {
+          location: document.getElementById('searchLocation').value,
+          minBeds: +document.getElementById('searchMinBeds').value,
+          minBaths: +document.getElementById('searchMinBaths').value,
+          minPrice: +document.getElementById('searchMinPrice').value,
+          maxPrice: +document.getElementById('searchMaxPrice').value,
+          minSqft: +document.getElementById('searchMinSqft').value,
+          maxSqft: +document.getElementById('searchMaxSqft').value,
+          homeType: document.getElementById('searchHomeType').value
+        },
+        downPaymentPercent: +document.getElementById('downPaymentPercent').value,
+        closingCostPercent: +document.getElementById('closingCostPercent').value,
+        loanInterestRate: +document.getElementById('loanInterestRate').value,
+        loanTermYears: +document.getElementById('loanTermYears').value,
+        propertyTaxRate: +document.getElementById('propertyTaxRate').value,
+        monthlyInsuranceEstimate: +document.getElementById('monthlyInsuranceEstimate').value,
+        monthlyHOAFees: +document.getElementById('monthlyHOAFees').value,
+        vacancyRatePercent: +document.getElementById('vacancyRatePercent').value,
+        annualAppreciationRate: +document.getElementById('annualAppreciationRate').value,
+        principalPaydownEstimatePercent: +document.getElementById('principalPaydownEstimatePercent').value,
+        scoreWeights: {
+          cashOnCashROI: +document.getElementById('weightCashROI').value,
+          dscr: +document.getElementById('weightDSCR').value,
+          capRate: +document.getElementById('weightCapRate').value,
+          fiveYearGain: +document.getElementById('weight5yrGain').value,
+          equityAtPurchase: +document.getElementById('weightEquity').value
+        },
+        normalizationRanges: {
+          cashOnCashROI: parseRange(document.getElementById('rangeCashROI').value),
+          dscr: parseRange(document.getElementById('rangeDSCR').value),
+          capRate: parseRange(document.getElementById('rangeCapRate').value),
+          fiveYearGain: parseRange(document.getElementById('range5yrGain').value),
+          equityAtPurchase: parseRange(document.getElementById('rangeEquity').value)
+        }
+      };
+
+      fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      })
+      .then(res => res.ok ? alert('Config sent successfully!') : alert('Error sending config.'))
+      .catch(err => alert('Failed to send: ' + err.message));
+    }
+  </script>
+</body>
+</html>
