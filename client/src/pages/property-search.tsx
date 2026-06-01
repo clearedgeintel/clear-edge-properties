@@ -1,5 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'wouter';
+
+// Search results scoring above this auto-load their full Zillow detail (agent,
+// zestimate, taxes, schools, risk) so high-potential deals surface enriched
+// data without a click. Mirrors the server-side first-import enrichment rule.
+const AUTO_ENRICH_SCORE_THRESHOLD = 50;
 import { useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -644,6 +649,31 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
     }
   };
 
+  // Auto-enrich high-scoring cards, lazily: only fire when the card scrolls
+  // into view (so a large result set doesn't trigger dozens of API calls at
+  // once), and only once per card.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const autoTried = useRef(false);
+  const shouldAutoEnrich = canEnrich && (property.score ?? 0) > AUTO_ENRICH_SCORE_THRESHOLD;
+  useEffect(() => {
+    if (!shouldAutoEnrich) return;
+    const el = cardRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !autoTried.current) {
+          autoTried.current = true;
+          loadDetails();
+          obs.disconnect();
+        }
+      },
+      { rootMargin: '150px' },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldAutoEnrich]);
+
   // Prefer the enriched agent (has a full name + rating + zuid) over the
   // search-payload brokerage.
   const agent = detail?.agent || property.agent || null;
@@ -656,7 +686,7 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
     : '';
 
   return (
-    <Card className="hover:shadow-md transition-shadow">
+    <Card ref={cardRef} className="hover:shadow-md transition-shadow">
       <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex-1">
@@ -762,22 +792,29 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
           </div>
         )}
 
-        {/* Load full enrichment (Zillow) */}
+        {/* Full enrichment (Zillow). High-scoring cards auto-load (lazily); the
+            rest expose a manual button. */}
         {canEnrich && !detail && (
           <div className="mt-3 pt-3 border-t border-slate-100">
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={loadDetails}
-              disabled={loadingDetail}
-            >
-              {loadingDetail ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Loading…</>
-              ) : (
-                <><Sparkles className="w-4 h-4 mr-2" /> Load agent &amp; full details</>
-              )}
-            </Button>
+            {shouldAutoEnrich && !detailError ? (
+              <p className="text-xs text-slate-500 flex items-center justify-center gap-2 py-1">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Auto-loading agent &amp; full details (score {property.score})…
+              </p>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={loadDetails}
+                disabled={loadingDetail}
+              >
+                {loadingDetail ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Loading…</>
+                ) : (
+                  <><Sparkles className="w-4 h-4 mr-2" /> Load agent &amp; full details</>
+                )}
+              </Button>
+            )}
             {detailError && <p className="text-xs text-red-600 mt-2 text-center">{detailError}</p>}
           </div>
         )}
