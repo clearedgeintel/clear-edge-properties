@@ -102,4 +102,19 @@ app.use((req, res, next) => {
     log(`serving on port ${port}`);
     consoleLogger.logInfo('Server started - API console is ready');
   });
+
+  // Optional in-process scheduler for saved searches. Off by default; set
+  // ENABLE_CRON=true to run due searches every SAVED_SEARCH_TICK_MIN minutes
+  // (default 15) on a single instance. For multi-instance or external control,
+  // leave it off and drive POST /api/saved-searches/run-due from n8n/Railway cron.
+  if (process.env.ENABLE_CRON === "true") {
+    const tickMin = Math.max(1, parseInt(process.env.SAVED_SEARCH_TICK_MIN || "15", 10));
+    const { runDueSavedSearches } = await import("./lib/saved-search-runner");
+    log(`saved-search scheduler enabled (every ${tickMin}m)`);
+    setInterval(() => {
+      runDueSavedSearches()
+        .then((r) => r.ran && log(`saved-search tick: ran ${r.ran}`))
+        .catch((e) => console.error("saved-search tick failed:", e));
+    }, tickMin * 60 * 1000);
+  }
 })();

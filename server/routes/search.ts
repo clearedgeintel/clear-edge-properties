@@ -6,8 +6,10 @@ import { zillowIntegration } from "../lib/zillow";
 import {
   multiPlatformSearch,
   toInsertProperty,
+  searchResultZpid,
   type SearchResult,
 } from "../lib/multi-platform-search";
+import { enrichFirstImports, DEFAULT_ENRICH_SCORE_THRESHOLD } from "../lib/enrichment";
 import { consoleLogger } from "../lib/console-logger";
 import { z } from "zod";
 
@@ -359,9 +361,23 @@ router.post(
       const { tenantId, userId } = (req as any).ctx;
       const saveResult = await storage.saveSearchResults(tenantId, userId, inserts);
 
+      // "Score > threshold on first import → enrich." Build candidates from the
+      // newly-imported (not previously seen) results and fetch their details in
+      // the background so the save response isn't blocked on external API calls.
+      const newSet = new Set(saveResult.newZpids);
+      const enrichCandidates = (results as unknown as SearchResult[])
+        .map((r) => ({ zpid: searchResultZpid(r), platform: r.platform, score: r.score ?? null }))
+        .filter((c) => newSet.has(c.zpid));
+      if (enrichCandidates.length) {
+        void enrichFirstImports(enrichCandidates, DEFAULT_ENRICH_SCORE_THRESHOLD).catch((e) =>
+          console.error("Background enrichment error:", e),
+        );
+      }
+
       res.json({
         saved: saveResult.saved,
         zpids: saveResult.zpids,
+        newImports: saveResult.newZpids.length,
         skipped: results.length - inserts.length,
       });
     } catch (error: any) {

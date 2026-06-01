@@ -1212,6 +1212,7 @@ export type ApiKey = typeof apiKeys.$inferSelect;
 export type ProcessedWebhookEvent = typeof processedWebhookEvents.$inferSelect;
 export type BillingTransaction = typeof billingTransactions.$inferSelect;
 export type SavedSearch = typeof savedSearches.$inferSelect;
+export type SavedSearchMatch = typeof savedSearchMatches.$inferSelect;
 export type PropertyAlertRow = typeof propertyAlerts.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
 export type PropertyWithMotivation = typeof propertiesWithMotivation.$inferSelect;
@@ -1224,6 +1225,27 @@ export type InsertUserProperty = typeof userProperties.$inferInsert;
 export type InsertWhitelabelBranding = typeof whitelabelBranding.$inferInsert;
 export type UpdateWhitelabelBranding = Partial<Omit<InsertWhitelabelBranding, "id" | "tenantId" | "createdAt" | "updatedAt">>;
 export type InsertApiKey = typeof apiKeys.$inferInsert;
+export type InsertSavedSearch = typeof savedSearches.$inferInsert;
+export type InsertSavedSearchMatch = typeof savedSearchMatches.$inferInsert;
+
+// Shape of the savedSearches.filters jsonb. All fields optional — an unset
+// field imposes no constraint when the saved search runs.
+export interface SavedSearchFilters {
+  min_price?: number | null;
+  max_price?: number | null;
+  min_beds?: number | null;
+  max_beds?: number | null;
+  min_baths?: number | null;
+  min_cap_rate?: number | null;
+  max_cap_rate?: number | null;
+  min_cash_flow?: number | null;
+  min_investment_score?: number | null;
+  max_investment_score?: number | null;
+  property_types?: string[];
+  home_status?: string[];
+  is_below_zestimate?: boolean | null;
+  exclude_negative_cash_flow?: boolean | null;
+}
 
 // Read-only property search/filter (properties are written by n8n, not the app)
 export const propertySearchSchema = z.object({

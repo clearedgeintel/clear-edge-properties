@@ -23,6 +23,7 @@ import ApiAccess from "@/pages/api-access";
 import PropertySearch from "@/pages/property-search";
 import AgentLookup from "@/pages/agent-lookup";
 import Buyers from "@/pages/buyers";
+import SavedSearches from "@/pages/saved-searches";
 import ApiDocs from "@/pages/api-docs";
 import PropertyDetails from "@/pages/property-details";
 import NotFound from "@/pages/not-found";
@@ -50,6 +51,7 @@ function Router() {
       <Route path="/property-search" component={PropertySearch} />
       <Route path="/agent-lookup" component={AgentLookup} />
       <Route path="/buyers" component={Buyers} />
+      <Route path="/saved-searches" component={SavedSearches} />
       <Route path="/api-docs" component={ApiDocs} />
       <Route component={NotFound} />
     </Switch>

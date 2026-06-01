@@ -85,7 +85,7 @@ export type SearchResult = UnifiedProperty;
 // Build a unique-ish zpid for a live result. Zillow gives a real zpid; the other
 // platforms supply their own listing id, so we namespace it to avoid collisions
 // with Zillow ids on the shared zpid PK.
-function searchResultZpid(result: SearchResult): string {
+export function searchResultZpid(result: SearchResult): string {
   const raw = (result.id ?? '').toString().trim();
   if (!raw) return '';
   return result.platform === 'zillow' ? raw : `${result.platform}-${raw}`;

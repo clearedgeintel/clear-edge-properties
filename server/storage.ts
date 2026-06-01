@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   tenants,
@@ -10,6 +10,8 @@ import {
   whitelabelBranding,
   apiKeys,
   processedWebhookEvents,
+  savedSearches,
+  savedSearchMatches,
   type Tenant,
   type User,
   type Property,
@@ -26,6 +28,9 @@ import {
   buyers,
   type Buyer,
   type InsertBuyer,
+  type SavedSearch,
+  type InsertSavedSearch,
+  type SavedSearchMatch,
 } from "@shared/schema";
 
 // ---------------------------------------------------------------------------
@@ -63,7 +68,7 @@ export interface IStorage {
   getUserProperties(tenantId: string, userId: string): Promise<Array<UserProperty & { property: Property | null }>>;
   addUserProperty(tenantId: string, userId: string, zpid: string): Promise<UserProperty>;
   addUserProperties(tenantId: string, userId: string, zpids: string[]): Promise<UserProperty[]>;
-  saveSearchResults(tenantId: string, userId: string, results: InsertProperty[]): Promise<{ saved: number; zpids: string[] }>;
+  saveSearchResults(tenantId: string, userId: string, results: InsertProperty[]): Promise<{ saved: number; zpids: string[]; newZpids: string[] }>;
   removeUserProperty(tenantId: string, userId: string, zpid: string): Promise<void>;
   isUserProperty(tenantId: string, userId: string, zpid: string): Promise<boolean>;
   updateUserProperty(tenantId: string, id: string, updates: Partial<UserProperty>): Promise<UserProperty>;
@@ -94,6 +99,23 @@ export interface IStorage {
   createBuyersBulk(values: InsertBuyer[]): Promise<Buyer[]>;
   updateBuyer(tenantId: string, id: string, values: Partial<InsertBuyer>): Promise<Buyer | undefined>;
   deleteBuyer(tenantId: string, id: string): Promise<void>;
+
+  // Saved searches (tenant-scoped, except the runner helpers)
+  listSavedSearches(tenantId: string, userId: string): Promise<SavedSearch[]>;
+  getSavedSearch(tenantId: string, id: string): Promise<SavedSearch | undefined>;
+  createSavedSearch(values: InsertSavedSearch): Promise<SavedSearch>;
+  updateSavedSearch(tenantId: string, id: string, values: Partial<InsertSavedSearch>): Promise<SavedSearch | undefined>;
+  deleteSavedSearch(tenantId: string, id: string): Promise<void>;
+  // Server-internal (cross-tenant) helpers used by the scheduled runner.
+  listActiveSavedSearches(): Promise<SavedSearch[]>;
+  touchSavedSearchRun(id: string, matchCount: number): Promise<void>;
+  // Record matched properties; returns only the rows that were newly inserted
+  // (i.e. matches not seen by this saved search before).
+  recordSavedSearchMatches(savedSearchId: string, zpids: string[]): Promise<SavedSearchMatch[]>;
+  getSavedSearchMatches(savedSearchId: string): Promise<SavedSearchMatch[]>;
+  markMatchesNotified(ids: string[]): Promise<void>;
+  // Of the given zpids, which already exist in `properties` (vs first import).
+  getExistingZpids(zpids: string[]): Promise<string[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -295,13 +317,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Save many search results at once: upsert each property, then track them all.
-  async saveSearchResults(tenantId: string, userId: string, results: InsertProperty[]): Promise<{ saved: number; zpids: string[] }> {
+  // `newZpids` are properties that did NOT already exist in `properties` — i.e.
+  // their first import — which the enrichment rule keys off of.
+  async saveSearchResults(tenantId: string, userId: string, results: InsertProperty[]): Promise<{ saved: number; zpids: string[]; newZpids: string[] }> {
     const withZpid = results.filter((r) => !!r.zpid);
-    if (!withZpid.length) return { saved: 0, zpids: [] };
-    await this.upsertProperties(withZpid);
+    if (!withZpid.length) return { saved: 0, zpids: [], newZpids: [] };
     const zpids = withZpid.map((r) => r.zpid as string);
+
+    // Which of these already exist? The rest are first imports.
+    const existing = await db
+      .select({ zpid: properties.zpid })
+      .from(properties)
+      .where(inArray(properties.zpid, zpids));
+    const existingSet = new Set(existing.map((e) => e.zpid));
+    const newZpids = zpids.filter((z) => !existingSet.has(z));
+
+    await this.upsertProperties(withZpid);
     await this.addUserProperties(tenantId, userId, zpids);
-    return { saved: zpids.length, zpids };
+    return { saved: zpids.length, zpids, newZpids };
   }
 
   async removeUserProperty(tenantId: string, userId: string, zpid: string): Promise<void> {
@@ -432,6 +465,89 @@ export class DatabaseStorage implements IStorage {
 
   async deleteBuyer(tenantId: string, id: string): Promise<void> {
     await db.delete(buyers).where(and(eq(buyers.tenantId, tenantId), eq(buyers.id, id)));
+  }
+
+  // ---- Saved searches ----
+  async listSavedSearches(tenantId: string, userId: string): Promise<SavedSearch[]> {
+    return db
+      .select()
+      .from(savedSearches)
+      .where(and(eq(savedSearches.tenantId, tenantId), eq(savedSearches.userId, userId)))
+      .orderBy(desc(savedSearches.createdAt));
+  }
+
+  async getSavedSearch(tenantId: string, id: string): Promise<SavedSearch | undefined> {
+    const [row] = await db
+      .select()
+      .from(savedSearches)
+      .where(and(eq(savedSearches.tenantId, tenantId), eq(savedSearches.id, id)));
+    return row || undefined;
+  }
+
+  async createSavedSearch(values: InsertSavedSearch): Promise<SavedSearch> {
+    const [row] = await db.insert(savedSearches).values(values).returning();
+    return row;
+  }
+
+  async updateSavedSearch(tenantId: string, id: string, values: Partial<InsertSavedSearch>): Promise<SavedSearch | undefined> {
+    const [row] = await db
+      .update(savedSearches)
+      .set({ ...values, updatedAt: sql`now()` })
+      .where(and(eq(savedSearches.tenantId, tenantId), eq(savedSearches.id, id)))
+      .returning();
+    return row || undefined;
+  }
+
+  async deleteSavedSearch(tenantId: string, id: string): Promise<void> {
+    await db.delete(savedSearches).where(and(eq(savedSearches.tenantId, tenantId), eq(savedSearches.id, id)));
+  }
+
+  async listActiveSavedSearches(): Promise<SavedSearch[]> {
+    return db.select().from(savedSearches).where(eq(savedSearches.isActive, true));
+  }
+
+  async touchSavedSearchRun(id: string, matchCount: number): Promise<void> {
+    await db
+      .update(savedSearches)
+      .set({ lastRunAt: sql`now()`, lastMatchCount: matchCount, updatedAt: sql`now()` })
+      .where(eq(savedSearches.id, id));
+  }
+
+  async recordSavedSearchMatches(savedSearchId: string, zpids: string[]): Promise<SavedSearchMatch[]> {
+    if (!zpids.length) return [];
+    const unique = Array.from(new Set(zpids));
+    // onConflictDoNothing on the (saved_search_id, zpid) unique key means the
+    // returned rows are exactly the matches new to this saved search.
+    return db
+      .insert(savedSearchMatches)
+      .values(unique.map((zpid) => ({ savedSearchId, zpid })))
+      .onConflictDoNothing()
+      .returning();
+  }
+
+  async getSavedSearchMatches(savedSearchId: string): Promise<SavedSearchMatch[]> {
+    return db
+      .select()
+      .from(savedSearchMatches)
+      .where(eq(savedSearchMatches.savedSearchId, savedSearchId))
+      .orderBy(desc(savedSearchMatches.matchDate));
+  }
+
+  async markMatchesNotified(ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    await db
+      .update(savedSearchMatches)
+      .set({ wasNotified: true })
+      .where(inArray(savedSearchMatches.id, ids));
+  }
+
+  async getExistingZpids(zpids: string[]): Promise<string[]> {
+    if (!zpids.length) return [];
+    const rows = await db
+      .select({ zpid: properties.zpid })
+      .from(properties)
+      .where(inArray(properties.zpid, zpids));
+    return rows.map((r) => r.zpid);
   }
 }
 
