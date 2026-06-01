@@ -5,6 +5,28 @@ import { Link } from 'wouter';
 // zestimate, taxes, schools, risk) so high-potential deals surface enriched
 // data without a click. Mirrors the server-side first-import enrichment rule.
 const AUTO_ENRICH_SCORE_THRESHOLD = 50;
+
+// Redfin's detail endpoint returns a different shape than Zillow's; map the
+// overlapping fields onto the names EnrichmentPanel reads (it null-guards the
+// rest, so Zillow-only fields like schools/climate just don't render).
+function normalizeRedfinDetail(d: any) {
+  if (!d) return d;
+  return {
+    source: 'redfin',
+    zestimate: d.valueEstimate ?? null,
+    rentZestimate: d.rentEstimate ?? null,
+    yearBuilt: d.yearBuilt ?? null,
+    lotSize: d.lotSize ?? null,
+    pricePerSqft: d.pricePerSqft ?? null,
+    daysOnZillow: d.daysOnMarket ?? null,
+    description: d.description ?? null,
+    priceHistory: Array.isArray(d.priceHistory) ? d.priceHistory : [],
+    schools: [],
+    climateRisks: [],
+    agent: d.agent ?? null,
+    mlsId: d.mlsId ?? null,
+  };
+}
 import { useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -634,14 +656,23 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
   const [detail, setDetail] = useState<any>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const canEnrich = platform === 'zillow' && !!property.id;
+  // Zillow enriches by zpid; Redfin by its listing url. Other platforms have no
+  // detail fetcher yet.
+  const redfinUrl = property.listingUrl || property.url;
+  const canEnrich =
+    (platform === 'zillow' && !!property.id) || (platform === 'redfin' && !!redfinUrl);
 
   const loadDetails = async () => {
     setLoadingDetail(true);
     setDetailError(null);
     try {
-      const res = await apiRequest('GET', `/api/zillow/property/${encodeURIComponent(property.id)}`);
-      setDetail(await res.json());
+      if (platform === 'redfin') {
+        const res = await apiRequest('GET', `/api/redfin/property?url=${encodeURIComponent(redfinUrl)}`);
+        setDetail(normalizeRedfinDetail(await res.json()));
+      } else {
+        const res = await apiRequest('GET', `/api/zillow/property/${encodeURIComponent(property.id)}`);
+        setDetail(await res.json());
+      }
     } catch {
       setDetailError('Could not load details. Try again.');
     } finally {
@@ -798,7 +829,7 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
           <div className="mt-3 pt-3 border-t border-slate-100">
             {shouldAutoEnrich && !detailError ? (
               <p className="text-xs text-slate-500 flex items-center justify-center gap-2 py-1">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Auto-loading agent &amp; full details (score {property.score})…
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Auto-loading full details (score {property.score})…
               </p>
             ) : (
               <Button
@@ -895,8 +926,9 @@ function EnrichmentPanel({ detail }: { detail: any }) {
   const fmtMoney = (n: number | null | undefined) =>
     n != null ? `$${Math.round(n).toLocaleString()}` : null;
 
+  const isRedfin = detail.source === 'redfin';
   const stats: Array<{ label: string; value: string | null }> = [
-    { label: 'Zestimate', value: fmtMoney(detail.zestimate) },
+    { label: isRedfin ? 'Redfin est.' : 'Zestimate', value: fmtMoney(detail.zestimate) },
     { label: 'Rent est.', value: detail.rentZestimate != null ? `${fmtMoney(detail.rentZestimate)}/mo` : null },
     { label: 'Year built', value: detail.yearBuilt != null ? String(detail.yearBuilt) : null },
     { label: 'Lot', value: detail.lotSize != null ? `${detail.lotSize.toLocaleString()} sqft` : null },
@@ -904,7 +936,7 @@ function EnrichmentPanel({ detail }: { detail: any }) {
     { label: 'Tax assessed', value: fmtMoney(detail.taxAssessedValue) },
     { label: 'Annual tax', value: fmtMoney(detail.annualTax) },
     { label: 'HOA', value: detail.hoaFeeMonthly != null ? `${fmtMoney(detail.hoaFeeMonthly)}/mo` : null },
-    { label: 'Days on Zillow', value: detail.daysOnZillow != null ? String(detail.daysOnZillow) : null },
+    { label: isRedfin ? 'Days on market' : 'Days on Zillow', value: detail.daysOnZillow != null ? String(detail.daysOnZillow) : null },
   ].filter((s) => s.value);
 
   return (
