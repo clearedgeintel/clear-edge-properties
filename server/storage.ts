@@ -39,6 +39,7 @@ export interface IStorage {
   createTenant(values: { name: string; slug: string }): Promise<Tenant>;
   updateTenantStripeInfo(tenantId: string, stripeCustomerId: string, stripeSubscriptionId: string): Promise<Tenant>;
   updateTenantSubscriptionStatus(tenantId: string, status: string): Promise<Tenant>;
+  updateTenantPlan(tenantId: string, status: string, tier: string): Promise<Tenant>;
 
   // Users
   getUser(id: string): Promise<User | undefined>;
@@ -119,6 +120,18 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db
       .update(tenants)
       .set({ subscriptionStatus: status, updatedAt: sql`now()` })
+      .where(eq(tenants.id, tenantId))
+      .returning();
+    return row;
+  }
+
+  // Set both subscription status AND tier together. Quotas (getTenantLimits) key
+  // off subscriptionTier, so a billing change must move the tier — not just the
+  // status — for limits to actually upgrade/downgrade.
+  async updateTenantPlan(tenantId: string, status: string, tier: string): Promise<Tenant> {
+    const [row] = await db
+      .update(tenants)
+      .set({ subscriptionStatus: status, subscriptionTier: tier, updatedAt: sql`now()` })
       .where(eq(tenants.id, tenantId))
       .returning();
     return row;

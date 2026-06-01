@@ -20,7 +20,7 @@ router.post('/api/create-subscription', requireAuth, async (req: any, res) => {
 
     // Development mode mock response when Stripe isn't properly configured.
     if (!stripe || !process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY.includes('dummy')) {
-      await storage.updateTenantSubscriptionStatus(tenant.id, 'active');
+      await storage.updateTenantPlan(tenant.id, 'active', process.env.STRIPE_PAID_TIER || 'pro');
       return res.json({
         subscriptionId: 'sub_dev_mock',
         clientSecret: 'pi_dev_mock_client_secret',

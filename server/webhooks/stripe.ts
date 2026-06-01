@@ -3,6 +3,11 @@ import Stripe from "stripe";
 import { stripe } from "../lib/stripe";
 import { storage } from "../storage";
 
+// The tier a paying subscription grants. Single price today → one paid tier;
+// override with STRIPE_PAID_TIER if the plan name differs (must match a key in
+// TIER_LIMITS: free | basic | pro | enterprise).
+const PAID_TIER = process.env.STRIPE_PAID_TIER || "pro";
+
 // Maps a Stripe subscription status onto our internal subscriptionStatus value.
 function mapSubscriptionStatus(status: Stripe.Subscription.Status): string {
   switch (status) {
@@ -70,8 +75,17 @@ export function setupStripeWebhooks(app: Express) {
 
             if (tenant) {
               const status = mapSubscriptionStatus(subscription.status);
-              await storage.updateTenantSubscriptionStatus(tenant.id, status);
-              console.log(`Updated tenant ${tenant.id} subscription status to ${status}`);
+              // Move the tier with the status so quotas actually change: active →
+              // paid tier, canceled/inactive → free. past_due keeps the tier (grace
+              // period) and only flips status.
+              if (status === "active") {
+                await storage.updateTenantPlan(tenant.id, status, PAID_TIER);
+              } else if (status === "canceled" || status === "inactive") {
+                await storage.updateTenantPlan(tenant.id, status, "free");
+              } else {
+                await storage.updateTenantSubscriptionStatus(tenant.id, status);
+              }
+              console.log(`Updated tenant ${tenant.id} subscription → status=${status}`);
             } else {
               console.warn(`No tenant found for Stripe customer ${customerId}`);
             }
@@ -84,8 +98,8 @@ export function setupStripeWebhooks(app: Express) {
             const tenant = await storage.getTenantByStripeCustomerId(customerId);
 
             if (tenant) {
-              await storage.updateTenantSubscriptionStatus(tenant.id, "canceled");
-              console.log(`Canceled subscription for tenant ${tenant.id}`);
+              await storage.updateTenantPlan(tenant.id, "canceled", "free");
+              console.log(`Canceled subscription for tenant ${tenant.id} (tier → free)`);
             } else {
               console.warn(`No tenant found for Stripe customer ${customerId}`);
             }

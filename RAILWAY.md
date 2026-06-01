@@ -37,6 +37,7 @@ Set these in the service's **Variables** tab. The `VITE_*` ones are **build-time
 | `STRIPE_SECRET_KEY` | runtime | Billing. |
 | `STRIPE_PRICE_ID` | runtime | Subscription price. |
 | `STRIPE_WEBHOOK_SECRET` | runtime | Webhook signature verification. |
+| `STRIPE_PAID_TIER` | runtime | Optional. Tier an active subscription grants (`free`/`basic`/`pro`/`enterprise`). Defaults to `pro`. |
 | `SESSION_SECRET` | runtime | Session signing. |
 | `NODE_ENV` | runtime | `production`. |
 | `VITE_SUPABASE_URL` | **build** | Public Supabase URL for the client. |
