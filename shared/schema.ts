@@ -1256,3 +1256,59 @@ export const updateUserPropertySchema = insertUserPropertySchema.partial();
 export const upsertBrandingSchema = createInsertSchema(whitelabelBranding)
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
   .partial();
+
+// ---------------------------------------------------------------------------
+// Cash-buyer list. The dispo-side asset: investors (landlords/flippers/funds)
+// with a buy box, so found deals can be matched to ready buyers instantly.
+// Sourced externally (county records, PropStream, REIA, etc.) and stored here.
+// ---------------------------------------------------------------------------
+export const buyers = pgTable("buyers", {
+  id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+  tenantId: uuid("tenant_id").notNull(),
+  userId: uuid("user_id"),
+  name: text().notNull(),
+  company: text(),
+  email: text(),
+  phone: text(),
+  buyerType: text("buyer_type"), // landlord | flipper | fund | wholesaler | other
+  // Buy box
+  targetZips: text("target_zips").array(),
+  targetCities: text("target_cities").array(),
+  targetStates: text("target_states").array(),
+  propertyTypes: text("property_types").array(),
+  minBeds: integer("min_beds"),
+  maxBeds: integer("max_beds"),
+  minBaths: numeric("min_baths", { precision: 3, scale: 1 }),
+  minPrice: numeric("min_price", { precision: 12, scale: 2 }),
+  maxPrice: numeric("max_price", { precision: 12, scale: 2 }),
+  arvMin: numeric("arv_min", { precision: 12, scale: 2 }),
+  arvMax: numeric("arv_max", { precision: 12, scale: 2 }),
+  conditionTolerance: text("condition_tolerance"), // turnkey | light | moderate | heavy | teardown
+  // Proof of funds
+  proofOfFunds: boolean("proof_of_funds").default(false),
+  proofOfFundsAmount: numeric("proof_of_funds_amount", { precision: 12, scale: 2 }),
+  proofOfFundsVerifiedAt: date("proof_of_funds_verified_at"),
+  // Meta
+  source: text(), // county_records | propstream | reia | facebook | referral | other
+  tags: text().array(),
+  notes: text(),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp("updated_at", { mode: 'string' }).defaultNow(),
+}, (table) => [
+  index("idx_buyers_tenant_id").using("btree", table.tenantId.asc().nullsLast().op("uuid_ops")),
+  index("idx_buyers_is_active").using("btree", table.isActive.asc().nullsLast().op("bool_ops")),
+  foreignKey({
+    columns: [table.tenantId],
+    foreignColumns: [tenants.id],
+    name: "buyers_tenant_id_fkey",
+  }).onDelete("cascade"),
+  foreignKey({
+    columns: [table.userId],
+    foreignColumns: [users.id],
+    name: "buyers_user_id_fkey",
+  }).onDelete("set null"),
+]);
+
+export type Buyer = typeof buyers.$inferSelect;
+export type InsertBuyer = typeof buyers.$inferInsert;

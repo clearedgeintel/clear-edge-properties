@@ -23,6 +23,9 @@ import {
   type ApiKey,
   type InsertApiKey,
   type PropertySearch,
+  buyers,
+  type Buyer,
+  type InsertBuyer,
 } from "@shared/schema";
 
 // ---------------------------------------------------------------------------
@@ -83,6 +86,14 @@ export interface IStorage {
   // Stripe webhook idempotency
   isWebhookEventProcessed(eventId: string): Promise<boolean>;
   markWebhookEventProcessed(eventId: string, type: string): Promise<void>;
+
+  // Cash buyers (tenant-scoped)
+  listBuyers(tenantId: string): Promise<Buyer[]>;
+  getBuyer(tenantId: string, id: string): Promise<Buyer | undefined>;
+  createBuyer(values: InsertBuyer): Promise<Buyer>;
+  createBuyersBulk(values: InsertBuyer[]): Promise<Buyer[]>;
+  updateBuyer(tenantId: string, id: string, values: Partial<InsertBuyer>): Promise<Buyer | undefined>;
+  deleteBuyer(tenantId: string, id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -381,6 +392,46 @@ export class DatabaseStorage implements IStorage {
 
   async markWebhookEventProcessed(eventId: string, type: string): Promise<void> {
     await db.insert(processedWebhookEvents).values({ id: eventId, type }).onConflictDoNothing();
+  }
+
+  // ---- Cash buyers ----
+  async listBuyers(tenantId: string): Promise<Buyer[]> {
+    return db
+      .select()
+      .from(buyers)
+      .where(eq(buyers.tenantId, tenantId))
+      .orderBy(desc(buyers.createdAt));
+  }
+
+  async getBuyer(tenantId: string, id: string): Promise<Buyer | undefined> {
+    const [row] = await db
+      .select()
+      .from(buyers)
+      .where(and(eq(buyers.tenantId, tenantId), eq(buyers.id, id)));
+    return row || undefined;
+  }
+
+  async createBuyer(values: InsertBuyer): Promise<Buyer> {
+    const [row] = await db.insert(buyers).values(values).returning();
+    return row;
+  }
+
+  async createBuyersBulk(values: InsertBuyer[]): Promise<Buyer[]> {
+    if (values.length === 0) return [];
+    return db.insert(buyers).values(values).returning();
+  }
+
+  async updateBuyer(tenantId: string, id: string, values: Partial<InsertBuyer>): Promise<Buyer | undefined> {
+    const [row] = await db
+      .update(buyers)
+      .set({ ...values, updatedAt: sql`now()` })
+      .where(and(eq(buyers.tenantId, tenantId), eq(buyers.id, id)))
+      .returning();
+    return row || undefined;
+  }
+
+  async deleteBuyer(tenantId: string, id: string): Promise<void> {
+    await db.delete(buyers).where(and(eq(buyers.tenantId, tenantId), eq(buyers.id, id)));
   }
 }
 

@@ -34,7 +34,8 @@ import {
   Briefcase,
   TrendingUp,
   Sparkles,
-  Users
+  Users,
+  Wallet
 } from "lucide-react";
 import { AuthModal } from "./auth-modal";
 
@@ -77,6 +78,7 @@ export function Navigation() {
         { href: "/browse", label: "Browse Properties", icon: Search, show: true },
         { href: "/property-search", label: "Property Search", icon: Building2, show: isAuthenticated },
         { href: "/deals", label: "My Deals", icon: BarChart3, show: isAuthenticated },
+        { href: "/buyers", label: "Cash Buyers", icon: Wallet, show: isAuthenticated },
         { href: "/portfolio", label: "Portfolio", icon: Briefcase, show: isAuthenticated },
         { href: "/market-trends", label: "Market Trends", icon: TrendingUp, show: isAuthenticated },
       ],

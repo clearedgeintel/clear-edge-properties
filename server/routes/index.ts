@@ -7,6 +7,7 @@ import propertiesRoutes from "./properties";
 import watchlistRoutes from "./watchlist";
 import searchRoutes from "./search";
 import agentsRoutes from "./agents";
+import buyersRoutes from "./buyers";
 import aiRoutes from "./ai";
 import adminRoutes from "./admin";
 import apiV1Routes from "./api-v1";
@@ -28,6 +29,7 @@ export function registerRoutes(app: Express): void {
   app.use(watchlistRoutes);
   app.use(searchRoutes);
   app.use(agentsRoutes);
+  app.use(buyersRoutes);
   app.use(aiRoutes);
   app.use(adminRoutes);
   app.use(apiV1Routes);

@@ -15,7 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { formatCompactPrice as formatPrice } from '@/lib/format';
 import { apiRequest } from '@/lib/queryClient';
-import { Building2, Home, Search, Filter, MapPin, DollarSign, BarChart3, TrendingUp, Phone, User, Sparkles, Star, GraduationCap, ShieldAlert, Loader2, ExternalLink } from 'lucide-react';
+import { Building2, Home, Search, Filter, MapPin, DollarSign, BarChart3, TrendingUp, Phone, User, Sparkles, Star, GraduationCap, ShieldAlert, Loader2, ExternalLink, Wallet, ShieldCheck } from 'lucide-react';
 
 const searchFormSchema = z.object({
   platform: z.enum(['zillow', 'loopnet', 'redfin', 'crexi', 'multi']),
@@ -783,8 +783,74 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
         )}
 
         {detail && <EnrichmentPanel detail={detail} />}
+
+        <BuyerMatchRow property={property} />
       </CardContent>
     </Card>
+  );
+}
+
+// "Find cash buyers" — matches this result against the tenant's buyer buy-boxes.
+function BuyerMatchRow({ property }: { property: any }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ count: number; buyers: any[] } | null>(null);
+
+  const findBuyers = async () => {
+    setLoading(true);
+    try {
+      const res = await apiRequest('POST', '/api/buyers/match', {
+        zip: property.address?.zipCode || null,
+        city: property.address?.city || null,
+        state: property.address?.state || null,
+        beds: typeof property.bedrooms === 'number' ? property.bedrooms : null,
+        baths: typeof property.bathrooms === 'number' ? property.bathrooms : null,
+        price: typeof property.price === 'number' ? property.price : null,
+        homeType: property.propertyType || null,
+      });
+      setResult(await res.json());
+    } catch {
+      setResult({ count: 0, buyers: [] });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-100">
+      {!result ? (
+        <Button variant="ghost" size="sm" className="text-slate-600" onClick={findBuyers} disabled={loading}>
+          {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wallet className="w-4 h-4 mr-2" />}
+          Find cash buyers
+        </Button>
+      ) : result.count === 0 ? (
+        <p className="text-xs text-slate-500 flex items-center gap-1">
+          <Wallet className="w-3.5 h-3.5" /> No buyers match this property's buy box yet.
+        </p>
+      ) : (
+        <div>
+          <p className="text-sm font-medium text-green-700 flex items-center gap-1.5 mb-1">
+            <Wallet className="w-4 h-4" /> {result.count} cash buyer{result.count > 1 ? 's' : ''} want this
+          </p>
+          <ul className="space-y-1">
+            {result.buyers.slice(0, 5).map((b) => (
+              <li key={b.id} className="flex items-center justify-between gap-2 text-sm">
+                <span className="truncate flex items-center gap-1.5">
+                  {b.name}
+                  {b.company && <span className="text-slate-400 text-xs truncate">· {b.company}</span>}
+                  {b.proofOfFunds && <ShieldCheck className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />}
+                </span>
+                {b.phone && (
+                  <a href={`tel:${b.phone}`} className="inline-flex items-center text-blue-600 hover:text-blue-700 whitespace-nowrap text-xs">
+                    <Phone className="w-3.5 h-3.5 mr-0.5" />{b.phone}
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+          {result.count > 5 && <p className="text-xs text-slate-400 mt-1">+{result.count - 5} more</p>}
+        </div>
+      )}
+    </div>
   );
 }
 
