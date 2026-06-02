@@ -177,7 +177,7 @@ export default function ApiAccess() {
             <Globe className="h-6 w-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-slate-800">ClearEdge API Access</h1>
+            <h1 className="text-3xl font-bold text-slate-800">ClearEdge Props API Access</h1>
             <p className="text-lg text-slate-600">Integrate real estate data and AI insights into your applications</p>
           </div>
         </div>

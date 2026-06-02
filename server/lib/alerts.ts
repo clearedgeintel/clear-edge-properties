@@ -75,6 +75,6 @@ export function buildMatchAlertHtml(
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <p style="color:#94a3b8;font-size:12px;margin-top:24px">ClearEdge — saved search alert</p>
+      <p style="color:#94a3b8;font-size:12px;margin-top:24px">ClearEdge Props — saved search alert</p>
     </div>`;
 }

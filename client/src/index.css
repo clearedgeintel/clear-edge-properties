@@ -13,7 +13,7 @@
   --card-foreground: hsl(224, 71.4%, 4.1%);
   --border: hsl(220, 13%, 91%);
   --input: hsl(220, 13%, 91%);
-  --primary: hsl(220.9, 39.3%, 11%);
+  --primary: hsl(215, 100%, 28%);
   --primary-foreground: hsl(210, 20%, 98%);
   --secondary: hsl(220, 14.3%, 95.9%);
   --secondary-foreground: hsl(220.9, 39.3%, 11%);
@@ -21,11 +21,17 @@
   --accent-foreground: hsl(220.9, 39.3%, 11%);
   --destructive: hsl(0, 84.2%, 60.2%);
   --destructive-foreground: hsl(210, 20%, 98%);
-  --ring: hsl(224, 71.4%, 4.1%);
+  --ring: hsl(215, 100%, 28%);
   --radius: 0.5rem;
-  --chart-1: hsl(12, 76%, 61%);
-  --chart-2: hsl(173, 58%, 39%);
-  --chart-3: hsl(197, 37%, 24%);
+  /* ClearEdge Props brand palette */
+  --brand-blue: hsl(215, 100%, 28%);   /* #003C8F deep blue */
+  --brand-navy: hsl(219, 90%, 23%);    /* #062B6F navy */
+  --brand-orange: hsl(28, 100%, 50%);  /* #FF7900 orange */
+  --brand-light: hsl(217, 100%, 96%);  /* #EAF3FF light blue */
+  --brand-gray: hsl(215, 16%, 47%);    /* #64748B cool gray */
+  --chart-1: hsl(215, 100%, 28%);
+  --chart-2: hsl(28, 100%, 50%);
+  --chart-3: hsl(219, 90%, 23%);
   --chart-4: hsl(43, 74%, 66%);
   --chart-5: hsl(27, 87%, 67%);
   --sidebar-background: hsl(0, 0%, 98%);

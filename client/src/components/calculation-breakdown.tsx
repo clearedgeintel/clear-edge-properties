@@ -254,7 +254,7 @@ export function CalculationBreakdown({ property, config }: CalculationBreakdownP
                 </Button>
                 <div className="text-right">
                   <div className="text-2xl font-bold text-white mb-1">ClearEdge</div>
-                  <div className="text-sm text-gray-300 font-medium">DEALS</div>
+                  <div className="text-sm text-gray-300 font-medium">PROPS</div>
                 </div>
               </div>
             </div>

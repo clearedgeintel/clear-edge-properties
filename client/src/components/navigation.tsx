@@ -39,6 +39,7 @@ import {
   Bell
 } from "lucide-react";
 import { AuthModal } from "./auth-modal";
+import { Logo } from "./logo";
 
 export function Navigation() {
   const [location] = useLocation();
@@ -130,13 +131,8 @@ export function Navigation() {
           </Button>
 
           {/* Logo and Brand */}
-          <Link href="/" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-800 rounded-lg flex items-center justify-center shadow-lg">
-              <span className="text-white font-bold text-sm">CE</span>
-            </div>
-            <div className="hidden sm:block">
-              <h1 className="text-lg font-bold text-slate-800">ClearEdge Deals</h1>
-            </div>
+          <Link href="/" className="flex items-center">
+            <Logo iconClassName="w-8 h-8" textClassName="text-base" />
           </Link>
 
           {/* User Account Section */}
@@ -180,24 +176,15 @@ export function Navigation() {
         <div className="flex flex-col h-full">
           {/* Desktop Logo & Brand - Always visible on desktop */}
           <div className="hidden lg:flex items-center px-6 py-4 border-b border-slate-200">
-            <Link href="/" className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-800 rounded-xl flex items-center justify-center shadow-lg">
-                <span className="text-white font-bold text-lg">CE</span>
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-slate-800">ClearEdge Deals</h1>
-                <p className="text-xs text-slate-500 leading-none">Real Estate Investment Platform</p>
-              </div>
+            <Link href="/" className="flex items-center">
+              <Logo iconClassName="w-10 h-10" textClassName="text-xl" showTagline />
             </Link>
           </div>
 
           {/* Mobile Sidebar Header */}
           <div className="flex items-center justify-between p-4 border-b border-slate-200 lg:hidden">
-            <Link href="/" className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-800 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">CE</span>
-              </div>
-              <span className="font-bold text-slate-800">ClearEdge Deals</span>
+            <Link href="/" className="flex items-center">
+              <Logo iconClassName="w-8 h-8" textClassName="text-base" />
             </Link>
             <Button
               variant="ghost"

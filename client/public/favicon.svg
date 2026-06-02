@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 82" role="img" aria-label="ClearEdge Props">
+  <path d="M32 1.5C15.5 1.5 2 15 2 31.5c0 21 30 49 30 49s30-28 30-49C62 15 48.5 1.5 32 1.5Z" fill="#003C8F"/>
+  <circle cx="32" cy="30" r="21" fill="#FFFFFF"/>
+  <path d="M17 33 32 19.5 47 33Z" fill="#FF7900"/>
+  <rect x="23" y="31" width="18" height="13" rx="1" fill="#FFFFFF"/>
+  <rect x="27.5" y="33.5" width="9" height="9" rx="1" fill="#062B6F"/>
+  <path d="M32 33.5v9M27.5 38h9" stroke="#FFFFFF" stroke-width="1.3"/>
+</svg>

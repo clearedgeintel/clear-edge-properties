@@ -10,7 +10,18 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      fontFamily: {
+        sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Arial", "sans-serif"],
+        heading: ["Poppins", "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+      },
       colors: {
+        brand: {
+          blue: "var(--brand-blue)",
+          navy: "var(--brand-navy)",
+          orange: "var(--brand-orange)",
+          light: "var(--brand-light)",
+          gray: "var(--brand-gray)",
+        },
         background: "var(--background)",
         foreground: "var(--foreground)",
         card: {

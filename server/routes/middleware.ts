@@ -12,7 +12,7 @@ async function getOrCreateDefaultTenant(): Promise<Tenant> {
   const existing = await storage.getTenantBySlug(DEFAULT_TENANT_SLUG);
   if (existing) return existing;
   try {
-    return await storage.createTenant({ name: "ClearEdge", slug: DEFAULT_TENANT_SLUG });
+    return await storage.createTenant({ name: "ClearEdge Props", slug: DEFAULT_TENANT_SLUG });
   } catch {
     // Lost a race on the unique slug — re-fetch.
     const t = await storage.getTenantBySlug(DEFAULT_TENANT_SLUG);

@@ -63,7 +63,7 @@ export function AICommentary({ property }: AICommentaryProps) {
 
     try {
       const lines: string[] = [];
-      lines.push('ClearEdge Deals — Property Investment Analysis Report');
+      lines.push('ClearEdge Props — Property Investment Analysis Report');
       lines.push('');
       lines.push(property.address ?? property.fullAddress ?? '');
       lines.push(

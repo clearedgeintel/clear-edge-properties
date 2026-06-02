@@ -82,7 +82,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
             {mode === "signin" ? "Sign in" : "Create your account"}
           </DialogTitle>
           <p className="text-center text-slate-600">
-            {mode === "signin" ? "Welcome back to ClearEdge." : "Start finding and analyzing deals."}
+            {mode === "signin" ? "Welcome back to ClearEdge Props." : "Start finding and analyzing deals."}
           </p>
         </DialogHeader>
 
