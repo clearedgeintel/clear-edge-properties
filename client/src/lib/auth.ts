@@ -1,7 +1,18 @@
 import { supabase } from './supabase';
 
-const isDevelopment = import.meta.env.DEV;
-const hasRealSupabase = import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Use the mock auth path ONLY when a real Supabase project isn't configured
+// (offline/local without env). When real credentials are present we always use
+// real Supabase auth — including local `npm run dev` — so signup/login behave
+// the same everywhere. (Previously this gated on import.meta.env.DEV, which
+// forced the mock in dev and routed to a removed /api/auth/signin endpoint.)
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const hasRealSupabase = !!(
+  supabaseUrl &&
+  import.meta.env.VITE_SUPABASE_ANON_KEY &&
+  !supabaseUrl.includes("dummy") &&
+  !supabaseUrl.includes("your-project")
+);
+const useMock = !hasRealSupabase;
 
 // Mock session for development
 const mockSession = {
@@ -38,13 +49,13 @@ export interface SignUpResult {
 
 export const auth = {
   async signInWithPassword(email: string, password: string) {
-    if (isDevelopment) return devSignin(email);
+    if (useMock) return devSignin(email);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
   },
 
   async signUpWithPassword(email: string, password: string): Promise<SignUpResult> {
-    if (isDevelopment) {
+    if (useMock) {
       await devSignin(email);
       return { session: true };
     }
@@ -61,7 +72,7 @@ export const auth = {
   },
 
   async signInWithGoogle() {
-    if (isDevelopment) return devSignin('admin@dev.com');
+    if (useMock) return devSignin('admin@dev.com');
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: window.location.origin },
@@ -70,7 +81,7 @@ export const auth = {
   },
 
   async signInWithMagicLink(email: string) {
-    if (isDevelopment) return devSignin(email);
+    if (useMock) return devSignin(email);
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: window.location.origin },
@@ -79,7 +90,7 @@ export const auth = {
   },
 
   async signOut() {
-    if (isDevelopment) {
+    if (useMock) {
       console.log('Development mode: Simulating sign-out');
       window.dispatchEvent(new CustomEvent('auth-signout'));
       return;
@@ -90,7 +101,7 @@ export const auth = {
   },
 
   async getSession() {
-    if (isDevelopment) {
+    if (useMock) {
       return mockSession;
     }
 
@@ -99,7 +110,7 @@ export const auth = {
   },
 
   async getUser() {
-    if (isDevelopment) {
+    if (useMock) {
       return mockSession.user;
     }
 
@@ -108,7 +119,7 @@ export const auth = {
   },
 
   onAuthStateChange(callback: (event: string, session: any) => void) {
-    if (isDevelopment) {
+    if (useMock) {
       // Listen for custom auth events in development
       const handleSignIn = () => callback('SIGNED_IN', mockSession);
       const handleSignOut = () => callback('SIGNED_OUT', null);
