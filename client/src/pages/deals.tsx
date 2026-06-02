@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautiful-dnd";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,23 @@ interface Deal {
   updatedAt: Date;
 }
 
+// A tracked property as returned by GET /api/deals (user_properties + property).
+interface SavedProperty {
+  id: string;
+  zpid: string;
+  property: {
+    zpid: string;
+    fullAddress?: string | null;
+    addressStreet?: string | null;
+    addressCity?: string | null;
+    addressState?: string | null;
+    addressZip?: string | null;
+    price?: string | null;
+    listPrice?: string | null;
+    investmentScorePercent?: string | null;
+  } | null;
+}
+
 const STORAGE_KEY = "clearedge_deals";
 
 export default function DealsPage() {
@@ -51,6 +69,10 @@ export default function DealsPage() {
   const [pendingDealForLoi, setPendingDealForLoi] = useState<string | null>(null);
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const { toast } = useToast();
+
+  // The user's saved/tracked properties — the "Add Deal" dialog prompts from
+  // these so a deal is created from a real property rather than typed by hand.
+  const { data: savedProperties = [] } = useQuery<SavedProperty[]>({ queryKey: ["/api/deals"] });
 
   // Load deals from localStorage on mount
   useEffect(() => {
@@ -231,7 +253,7 @@ export default function DealsPage() {
             <DialogHeader>
               <DialogTitle>Add New Deal</DialogTitle>
             </DialogHeader>
-            <DealForm onSubmit={addDeal} />
+            <DealForm onSubmit={addDeal} savedProperties={savedProperties} />
           </DialogContent>
         </Dialog>
       </div>
@@ -535,9 +557,10 @@ function DealCard({ deal, onEdit, onDelete, getScoreBadgeColor, onClick }: DealC
 interface DealFormProps {
   deal?: Deal;
   onSubmit: (deal: any) => void;
+  savedProperties?: SavedProperty[];
 }
 
-function DealForm({ deal, onSubmit }: DealFormProps) {
+function DealForm({ deal, onSubmit, savedProperties = [] }: DealFormProps) {
   const [formData, setFormData] = useState({
     title: deal?.title || "",
     address: deal?.address || "",
@@ -546,10 +569,30 @@ function DealForm({ deal, onSubmit }: DealFormProps) {
     stage: deal?.stage || "analyzing" as DealStage,
     notes: deal?.notes || "",
   });
+  const [selectedZpid, setSelectedZpid] = useState<string | null>(null);
+
+  // Only offer the saved-property picker when adding (not editing), and only
+  // for tracked rows that still have a backing property.
+  const pickable = !deal ? savedProperties.filter((p) => p.property) : [];
+
+  const prefillFrom = (p: SavedProperty) => {
+    const prop = p.property!;
+    const address =
+      prop.fullAddress ||
+      [prop.addressStreet, prop.addressCity, prop.addressState, prop.addressZip].filter(Boolean).join(", ");
+    setSelectedZpid(p.zpid);
+    setFormData((prev) => ({
+      ...prev,
+      title: prop.fullAddress || prop.addressStreet || `Property ${prop.zpid}`,
+      address,
+      price: Math.round(Number(prop.listPrice ?? prop.price ?? 0)) || 0,
+      score: Math.round(Number(prop.investmentScorePercent ?? 0)) || 0,
+    }));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.title || !formData.address || formData.price <= 0) {
       return;
     }
@@ -563,6 +606,52 @@ function DealForm({ deal, onSubmit }: DealFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {!deal && (
+        <div>
+          <Label>Add from saved properties</Label>
+          {pickable.length > 0 ? (
+            <>
+              <div className="mt-1.5 max-h-44 overflow-y-auto border rounded-md divide-y">
+                {pickable.map((p) => {
+                  const prop = p.property!;
+                  const addr =
+                    prop.fullAddress ||
+                    [prop.addressStreet, prop.addressCity].filter(Boolean).join(", ") ||
+                    prop.zpid;
+                  const price = Number(prop.listPrice ?? prop.price ?? 0);
+                  const score = Math.round(Number(prop.investmentScorePercent ?? 0));
+                  return (
+                    <button
+                      type="button"
+                      key={p.id}
+                      onClick={() => prefillFrom(p)}
+                      className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 hover:bg-slate-50 ${
+                        selectedZpid === p.zpid ? "bg-blue-50" : ""
+                      }`}
+                    >
+                      <span className="truncate flex items-center gap-1.5">
+                        <Home className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                        {addr}
+                      </span>
+                      <span className="text-xs text-slate-500 whitespace-nowrap">
+                        {price ? `$${price.toLocaleString()}` : "—"}{score ? ` · ${score}` : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Pick one to prefill, then adjust below — or enter manually.
+              </p>
+            </>
+          ) : (
+            <p className="text-xs text-slate-500 mt-1">
+              No saved properties yet. Save properties from search, or enter a deal manually below.
+            </p>
+          )}
+        </div>
+      )}
+
       <div>
         <Label htmlFor="title">Property Name/Title</Label>
         <Input
