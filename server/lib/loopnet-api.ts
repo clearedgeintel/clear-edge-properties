@@ -39,6 +39,16 @@ export interface LoopNetProperty {
     photo?: string;
     profileUrl?: string;
   };
+  // Commercial extras (Crexi/LoopNet). `unpriced` = price withheld ("Contact
+  // for price"), distinct from a genuine 0.
+  units?: number;
+  occupancy?: number;
+  subtype?: string;
+  investmentType?: string;
+  isOpportunityZone?: boolean;
+  hasOM?: boolean;
+  unpriced?: boolean;
+  urlSlug?: string;
 }
 
 export interface LoopNetPropertyDetails extends LoopNetProperty {

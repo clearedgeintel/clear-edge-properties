@@ -65,6 +65,14 @@ export interface UnifiedProperty {
   noi?: number;
   pricePerSqft?: number;
   parking?: number;
+  units?: number;
+  occupancy?: number;
+  subtype?: string;
+  investmentType?: string;
+  isOpportunityZone?: boolean;
+  hasOM?: boolean;
+  unpriced?: boolean;
+  listingSlug?: string;
 }
 
 export interface UnifiedSearchResult {
@@ -317,6 +325,14 @@ export class MultiPlatformSearchService {
       noi: property.noi,
       pricePerSqft: property.pricePerSqft,
       yearBuilt: property.yearBuilt,
+      units: property.units,
+      occupancy: property.occupancy,
+      subtype: property.subtype,
+      investmentType: property.investmentType,
+      isOpportunityZone: property.isOpportunityZone,
+      hasOM: property.hasOM,
+      unpriced: property.unpriced,
+      listingSlug: property.urlSlug,
     };
   }
 
@@ -369,6 +385,14 @@ export class MultiPlatformSearchService {
       pricePerSqft: property.pricePerSqft,
       parking: property.parking,
       yearBuilt: property.yearBuilt,
+      units: property.units,
+      occupancy: property.occupancy,
+      subtype: property.subtype,
+      investmentType: property.investmentType,
+      isOpportunityZone: property.isOpportunityZone,
+      hasOM: property.hasOM,
+      unpriced: property.unpriced,
+      listingSlug: property.urlSlug,
     };
   }
 

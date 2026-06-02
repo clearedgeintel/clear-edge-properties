@@ -272,6 +272,25 @@ router.post(
   },
 );
 
+// Crexi structured listing detail (units, occupancy, cap rate, year built…).
+// Slug is passed as ?slug= (the Crexi detail endpoint wants id + urlSlug).
+router.get(
+  "/api/crexi/listing/:id",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const { crexiApi } = await import("../lib/crexi-api");
+      const slug = typeof req.query.slug === "string" ? req.query.slug : undefined;
+      const detail = await crexiApi.getListingDetails(req.params.id, slug);
+      if (!detail) return res.status(404).json({ error: "Listing not found" });
+      res.json(detail);
+    } catch (error: any) {
+      console.error("Crexi listing detail error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch listing detail" });
+    }
+  },
+);
+
 // ---- Multi-platform search -------------------------------------------------
 
 router.post(

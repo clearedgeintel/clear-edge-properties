@@ -659,8 +659,11 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
   // Zillow enriches by zpid; Redfin by its listing url. Other platforms have no
   // detail fetcher yet.
   const redfinUrl = property.listingUrl || property.url;
+  const isCommercial = platform === 'crexi' || platform === 'loopnet';
   const canEnrich =
-    (platform === 'zillow' && !!property.id) || (platform === 'redfin' && !!redfinUrl);
+    (platform === 'zillow' && !!property.id) ||
+    (platform === 'redfin' && !!redfinUrl) ||
+    (platform === 'crexi' && !!property.id);
 
   const [autoFailed, setAutoFailed] = useState(false);
 
@@ -671,6 +674,10 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
       if (platform === 'redfin') {
         const res = await apiRequest('GET', `/api/redfin/property?url=${encodeURIComponent(redfinUrl)}`);
         setDetail(normalizeRedfinDetail(await res.json()));
+      } else if (platform === 'crexi') {
+        const slug = property.listingSlug ? `?slug=${encodeURIComponent(property.listingSlug)}` : '';
+        const res = await apiRequest('GET', `/api/crexi/listing/${encodeURIComponent(property.id)}${slug}`);
+        setDetail(await res.json());
       } else {
         const res = await apiRequest('GET', `/api/zillow/property/${encodeURIComponent(property.id)}`);
         setDetail(await res.json());
@@ -721,6 +728,29 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
     ? `/agent-lookup?name=${encodeURIComponent(agent.name)}${agentLocation ? `&location=${encodeURIComponent(agentLocation)}` : ''}`
     : '';
 
+  // Adaptive metrics. Commercial listings often withhold price and are sized in
+  // units (multifamily) or building SF, scored on cap rate rather than ROI.
+  const d = (isCommercial ? detail : null) || {};
+  const units = property.units ?? d.units;
+  const capRate = property.capRate ?? d.capRate;
+  const sqft = property.sqft ?? property.sizeSqFt ?? d.squareFootage;
+  const priceDisplay =
+    property.unpriced || !property.price ? 'Contact for price' : formatPrice(property.price);
+  const sizeDisplay = isCommercial
+    ? units != null
+      ? `${units} units`
+      : sqft
+        ? `${Number(sqft).toLocaleString()} sq ft`
+        : '—'
+    : `${(property.sqft ?? property.sizeSqFt ?? 0).toLocaleString()} sq ft`;
+  const assetType = [property.propertyType || property.homeType, property.subtype || d.subtype]
+    .filter(Boolean)
+    .join(' · ');
+  const occupancy = property.occupancy ?? d.occupancy;
+  const yearBuilt = property.yearBuilt ?? d.yearBuilt;
+  const showOZ = property.isOpportunityZone || d.isOpportunityZone;
+  const showOM = property.hasOM || d.hasOM;
+
   return (
     <Card ref={cardRef} className="hover:shadow-md transition-shadow">
       <CardContent className="p-4">
@@ -746,23 +776,25 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
             <p className="text-slate-600">Price</p>
-            <p className="font-semibold">{formatPrice(property.price)}</p>
+            <p className="font-semibold">{priceDisplay}</p>
           </div>
           <div>
             <p className="text-slate-600">Type</p>
-            <p className="font-semibold">{property.propertyType || property.homeType}</p>
+            <p className="font-semibold">{isCommercial ? (assetType || 'Commercial') : (property.propertyType || property.homeType)}</p>
           </div>
           <div>
             <p className="text-slate-600">Size</p>
-            <p className="font-semibold">{property.sqft?.toLocaleString() || property.sizeSqFt?.toLocaleString()} sq ft</p>
+            <p className="font-semibold">{sizeDisplay}</p>
           </div>
           <div>
-            <p className="text-slate-600">ROI</p>
-            <p className="font-semibold text-green-600">{property.estimatedRoi}%</p>
+            <p className="text-slate-600">{isCommercial ? 'Cap rate' : 'ROI'}</p>
+            <p className="font-semibold text-green-600">
+              {isCommercial ? (capRate != null ? `${capRate}%` : '—') : `${property.estimatedRoi}%`}
+            </p>
           </div>
         </div>
 
-        {(property.bedrooms || property.numBeds) && (
+        {!isCommercial && (property.bedrooms || property.numBeds) && (
           <div className="mt-3 flex items-center space-x-4 text-sm text-slate-600">
             <span>{property.bedrooms || property.numBeds} beds</span>
             <span>{property.bathrooms || property.numBaths} baths</span>
@@ -770,11 +802,19 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
           </div>
         )}
 
-        {(property.capRate || property.noi) && (
-          <div className="mt-3 flex items-center space-x-4 text-sm text-slate-600">
-            {property.capRate && <span>Cap Rate: {property.capRate}%</span>}
+        {isCommercial && (occupancy != null || yearBuilt != null || property.investmentType || property.noi) && (
+          <div className="mt-3 flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
+            {occupancy != null && <span>{occupancy}% occupied</span>}
+            {yearBuilt != null && <span>Built {yearBuilt}</span>}
+            {property.investmentType && <span>{property.investmentType}</span>}
             {property.noi && <span>NOI: ${property.noi.toLocaleString()}</span>}
-            {property.parking && <span>{property.parking} parking</span>}
+          </div>
+        )}
+
+        {isCommercial && (showOZ || showOM) && (
+          <div className="mt-2 flex items-center flex-wrap gap-1.5">
+            {showOZ && <Badge variant="outline" className="text-xs border-emerald-300 text-emerald-700">Opportunity Zone</Badge>}
+            {showOM && <Badge variant="outline" className="text-xs">OM available</Badge>}
           </div>
         )}
 
@@ -843,14 +883,14 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
               {loadingDetail ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Loading…</>
               ) : (
-                <><Sparkles className="w-4 h-4 mr-2" /> Load agent &amp; full details</>
+                <><Sparkles className="w-4 h-4 mr-2" /> {isCommercial ? 'Load full details' : 'Load agent & full details'}</>
               )}
             </Button>
             {detailError && <p className="text-xs text-red-600 mt-2 text-center">{detailError}</p>}
           </div>
         )}
 
-        {detail && <EnrichmentPanel detail={detail} />}
+        {detail && (isCommercial ? <CommercialEnrichmentPanel detail={detail} /> : <EnrichmentPanel detail={detail} />)}
 
         <BuyerMatchRow property={property} />
       </CardContent>
@@ -917,6 +957,45 @@ function BuyerMatchRow({ property }: { property: any }) {
           </ul>
           {result.count > 5 && <p className="text-xs text-slate-400 mt-1">+{result.count - 5} more</p>}
         </div>
+      )}
+    </div>
+  );
+}
+
+// Commercial detail (Crexi /listingdetails): units, occupancy, cap rate, etc.
+function CommercialEnrichmentPanel({ detail }: { detail: any }) {
+  const stats: Array<{ label: string; value: string | null }> = [
+    { label: 'Units', value: detail.units != null ? String(detail.units) : null },
+    { label: 'Building SF', value: detail.squareFootage != null ? Number(detail.squareFootage).toLocaleString() : null },
+    { label: 'Occupancy', value: detail.occupancy != null ? `${detail.occupancy}%` : null },
+    { label: 'Cap rate', value: detail.capRate != null ? `${detail.capRate}%` : null },
+    { label: 'Year built', value: detail.yearBuilt != null ? String(detail.yearBuilt) : null },
+    { label: 'Buildings', value: detail.buildings != null ? String(detail.buildings) : null },
+    { label: 'Stories', value: detail.stories != null ? String(detail.stories) : null },
+    { label: 'Lot', value: detail.lotAcres != null ? `${detail.lotAcres} ac` : null },
+  ].filter((s) => s.value);
+
+  if (!stats.length && !detail.subtype && !detail.description) return null;
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-100 space-y-3">
+      {detail.subtype && (
+        <p className="text-xs text-slate-500">
+          Subtype: <span className="font-medium text-slate-700">{detail.subtype}</span>
+        </p>
+      )}
+      {stats.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {stats.map((s) => (
+            <div key={s.label}>
+              <p className="text-xs text-slate-500">{s.label}</p>
+              <p className="text-sm font-medium text-slate-700">{s.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      {detail.description && (
+        <p className="text-xs text-slate-600 leading-relaxed line-clamp-4">{detail.description}</p>
       )}
     </div>
   );

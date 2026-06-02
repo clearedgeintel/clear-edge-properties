@@ -20,6 +20,25 @@ interface CrexiSuggestion {
   coordinates: { lat: number; lng: number };
 }
 
+// Structured detail from /listingdetails — the commercial financials the search
+// payload doesn't carry.
+export interface CrexiListingDetail {
+  units?: number;
+  squareFootage?: number;
+  occupancy?: number; // percent
+  yearBuilt?: number;
+  buildings?: number;
+  stories?: number;
+  lotAcres?: number;
+  subtype?: string;
+  capRate?: number;
+  isOpportunityZone?: boolean;
+  hasOM?: boolean;
+  pricePerItemType?: string; // "Unit" | "SqFt"
+  description?: string;
+  highlights?: string;
+}
+
 export class CrexiApiService {
   private readonly baseUrl = 'https://unofficial-crexi-data.p.rapidapi.com';
   private readonly host = 'unofficial-crexi-data.p.rapidapi.com';
@@ -99,6 +118,15 @@ export class CrexiApiService {
     const loc = (Array.isArray(listing.locations) ? listing.locations[0] : listing.locations) || {};
     const state = typeof loc.state === 'object' ? (loc.state?.code || '') : (loc.state || '');
     const slug = listing.urlSlug ? `/${listing.urlSlug}` : '';
+    const desc: string = listing.description || listing.name || '';
+
+    // The search payload embeds some metrics only in the description string,
+    // e.g. "Multifamily | 25 Units", "Retail | 7.75% CAP | 6,175 SqFt".
+    const units = this.matchNum(desc, /([\d,]+)\s*units?/i);
+    const capRate = this.matchNum(desc, /([\d.]+)\s*%\s*cap/i);
+
+    const sqft = Number(listing.squareFootage) || 0;
+    const price = Number(listing.askingPrice) || 0;
 
     return {
       id: (listing.id ?? '').toString(),
@@ -109,25 +137,79 @@ export class CrexiApiService {
         zipCode: loc.zip || '',
       },
       propertyType: Array.isArray(listing.types) && listing.types.length > 0 ? listing.types[0] : 'Commercial',
-      price: Number(listing.askingPrice) || 0,
-      // Crexi search results don't expose building size; left at 0 so the
-      // commercial scorer treats price-per-sqft / cap rate as unknown.
-      pricePerSqft: 0,
-      sqft: 0,
-      description: listing.description || listing.name || '',
+      price,
+      unpriced: !price, // no askingPrice → "Contact for price", not a real $0
+      pricePerSqft: price && sqft ? Math.round(price / sqft) : 0,
+      sqft,
+      units,
+      capRate,
+      investmentType: listing.investmentType || undefined,
+      isOpportunityZone: !!listing.isInOpportunityZone,
+      hasOM: !!listing.hasOM,
+      description: desc,
       images: listing.thumbnailUrl ? [listing.thumbnailUrl] : [],
       listingDate: listing.activatedOn || listing.updatedOn || new Date().toISOString(),
-      capRate: undefined,
       noi: undefined,
       yearBuilt: undefined,
       parking: undefined,
       url: `https://www.crexi.com/properties/${listing.id}${slug}`,
+      urlSlug: listing.urlSlug || undefined,
       latitude: loc.latitude,
       longitude: loc.longitude,
       broker: listing.brokerageName
         ? { company: listing.brokerageName, photo: listing.brokerTeamLogoUrl || undefined }
         : undefined,
     };
+  }
+
+  private matchNum(text: string, re: RegExp): number | undefined {
+    const m = text.match(re);
+    if (!m) return undefined;
+    const n = Number(m[1].replace(/,/g, ''));
+    return isNaN(n) ? undefined : n;
+  }
+
+  // Structured listing detail (units, occupancy, cap rate, year built, …).
+  async getListingDetails(id: string, urlSlug?: string): Promise<CrexiListingDetail | null> {
+    try {
+      const response = await this.makeRequest('/listingdetails', { id, urlSlug });
+      const d = response?.data;
+      if (!d) return null;
+
+      const sd: any[] = Array.isArray(d.summaryDetails) ? d.summaryDetails : [];
+      const val = (key: string) => sd.find((x) => x.key === key)?.value;
+      const toNum = (v: any): number | undefined => {
+        if (v == null) return undefined;
+        const n = Number(String(v).replace(/[,%]/g, ''));
+        return isNaN(n) ? undefined : n;
+      };
+      const stripHtml = (h: any): string =>
+        (typeof h === 'string' ? h : '').replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+
+      const highlights = stripHtml(d.investmentHighlights);
+      const marketing = stripHtml(d.marketingDescription);
+      const subType = val('SubType');
+
+      return {
+        units: toNum(val('Units')),
+        squareFootage: toNum(val('SquareFootage')),
+        occupancy: toNum(val('Occupancy')),
+        yearBuilt: toNum(val('YearBuilt')),
+        buildings: toNum(val('Buildings')),
+        stories: toNum(val('Stories')),
+        lotAcres: toNum(val('LotSize')),
+        subtype: Array.isArray(d.subtypes) ? d.subtypes[0] : (Array.isArray(subType) ? subType[0] : subType) || undefined,
+        capRate: this.matchNum(`${highlights} ${marketing}`, /([\d.]+)\s*%\s*cap/i),
+        isOpportunityZone: !!d.isInOpportunityZone,
+        hasOM: !!d.hasOM,
+        pricePerItemType: d.pricePerItemType || undefined,
+        description: marketing || undefined,
+        highlights: highlights || undefined,
+      };
+    } catch (error) {
+      console.error('Crexi listing detail error:', error);
+      return null;
+    }
   }
 }
 
