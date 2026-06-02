@@ -14,6 +14,10 @@ export default defineConfig({
     },
   },
   root: path.resolve(import.meta.dirname, "client"),
+  // Vite's env dir defaults to `root` (client/); the real .env lives at the
+  // project root, so VITE_* vars (Supabase URL/anon key) must be loaded from
+  // there or the client falls back to dummy values ("Failed to fetch").
+  envDir: path.resolve(import.meta.dirname),
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
