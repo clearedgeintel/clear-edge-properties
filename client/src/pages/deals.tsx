@@ -1,10 +1,11 @@
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautiful-dnd";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MoreVertical, FileText, Trash2, Calendar, DollarSign, Home, Loader2 } from "lucide-react";
+import { Plus, MoreVertical, FileText, Trash2, Calendar, DollarSign, Home, Loader2, Upload, Download } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import {
   Dialog,
   DialogContent,
@@ -378,12 +379,120 @@ function DealDetails({ deal, stages }: { deal: PipelineDeal; stages: PipelineSta
           <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg whitespace-pre-wrap">{deal.notes}</p>
         </div>
       )}
+
+      <DocumentsSection dealId={deal.id} />
+
       <a
         href={`/property-details?zpid=${encodeURIComponent(deal.zpid)}`}
         className="inline-flex items-center text-sm text-blue-600 hover:text-blue-700 font-medium"
       >
         View full property →
       </a>
+    </div>
+  );
+}
+
+interface DealDocument {
+  id: string;
+  fileName: string;
+  mimeType: string | null;
+  fileSize: number | null;
+  documentType: string;
+  uploadedAt: string | null;
+  downloadUrl: string | null;
+}
+
+// Deal documents (LOIs, etc.). Upload uses a server-issued signed URL so bytes
+// go straight to Supabase Storage; the server records + signs downloads.
+function DocumentsSection({ dealId }: { dealId: string }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const key = ["/api/deals", dealId, "documents"];
+
+  const { data, isLoading } = useQuery<{ documents: DealDocument[] }>({
+    queryKey: key,
+    queryFn: async () => (await apiRequest("GET", `/api/deals/${dealId}/documents`)).json(),
+  });
+  const docs = data?.documents ?? [];
+  const invalidate = () => qc.invalidateQueries({ queryKey: key });
+
+  const upload = useMutation({
+    mutationFn: async (file: File) => {
+      const sign = await (
+        await apiRequest("POST", `/api/deals/${dealId}/documents/sign`, { fileName: file.name, mimeType: file.type })
+      ).json();
+      if (!supabase) throw new Error("Storage not configured");
+      const { error } = await supabase.storage.from("deal-documents").uploadToSignedUrl(sign.path, sign.token, file);
+      if (error) throw error;
+      return (
+        await apiRequest("POST", `/api/deals/${dealId}/documents`, {
+          path: sign.path,
+          fileName: file.name,
+          mimeType: file.type,
+          fileSize: file.size,
+          documentType: "loi",
+        })
+      ).json();
+    },
+    onSuccess: () => { invalidate(); toast({ title: "Document uploaded" }); },
+    onError: (e) => toast({ title: "Upload failed", description: e instanceof Error ? e.message : "", variant: "destructive" }),
+  });
+
+  const del = useMutation({
+    mutationFn: async (docId: string) => (await apiRequest("DELETE", `/api/deals/${dealId}/documents/${docId}`)).json(),
+    onSuccess: () => { invalidate(); toast({ title: "Document removed" }); },
+  });
+
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) upload.mutate(file);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="font-semibold text-slate-900 text-sm">Documents</h4>
+        <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" className="hidden" onChange={onFile} />
+        <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={upload.isPending}>
+          {upload.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+          Upload LOI / doc
+        </Button>
+      </div>
+      {isLoading ? (
+        <p className="text-xs text-slate-400">Loading…</p>
+      ) : docs.length === 0 ? (
+        <p className="text-xs text-slate-400">No documents yet. Upload an LOI, contract, or photo.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {docs.map((doc) => (
+            <li key={doc.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
+              <span className="flex items-center gap-2 min-w-0">
+                <FileText className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-sm text-slate-800 truncate">{doc.fileName}</span>
+                  <span className="block text-xs text-slate-400">
+                    {doc.documentType?.toUpperCase()}
+                    {doc.fileSize ? ` · ${(doc.fileSize / 1024 / 1024).toFixed(2)} MB` : ""}
+                    {doc.uploadedAt ? ` · ${new Date(doc.uploadedAt).toLocaleDateString()}` : ""}
+                  </span>
+                </span>
+              </span>
+              <span className="flex items-center gap-1 flex-shrink-0">
+                {doc.downloadUrl && (
+                  <a href={doc.downloadUrl} target="_blank" rel="noopener noreferrer" title="Download">
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><Download className="w-4 h-4 text-slate-600" /></Button>
+                  </a>
+                )}
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => del.mutate(doc.id)} disabled={del.isPending}>
+                  <Trash2 className="w-4 h-4 text-red-500" />
+                </Button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

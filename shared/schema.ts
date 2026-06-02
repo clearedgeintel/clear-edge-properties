@@ -1225,6 +1225,8 @@ export type InsertUserProperty = typeof userProperties.$inferInsert;
 export type InsertWhitelabelBranding = typeof whitelabelBranding.$inferInsert;
 export type UpdateWhitelabelBranding = Partial<Omit<InsertWhitelabelBranding, "id" | "tenantId" | "createdAt" | "updatedAt">>;
 export type InsertApiKey = typeof apiKeys.$inferInsert;
+export type Document = typeof documents.$inferSelect;
+export type InsertDocument = typeof documents.$inferInsert;
 export type InsertSavedSearch = typeof savedSearches.$inferInsert;
 export type InsertSavedSearchMatch = typeof savedSearchMatches.$inferInsert;
 

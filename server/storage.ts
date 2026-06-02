@@ -12,6 +12,7 @@ import {
   processedWebhookEvents,
   savedSearches,
   savedSearchMatches,
+  documents,
   type Tenant,
   type User,
   type Property,
@@ -31,6 +32,8 @@ import {
   type SavedSearch,
   type InsertSavedSearch,
   type SavedSearchMatch,
+  type Document,
+  type InsertDocument,
 } from "@shared/schema";
 
 // ---------------------------------------------------------------------------
@@ -116,6 +119,13 @@ export interface IStorage {
   markMatchesNotified(ids: string[]): Promise<void>;
   // Of the given zpids, which already exist in `properties` (vs first import).
   getExistingZpids(zpids: string[]): Promise<string[]>;
+
+  // Deal documents (tenant-scoped)
+  getUserPropertyById(tenantId: string, id: string): Promise<UserProperty | undefined>;
+  createDocument(values: InsertDocument): Promise<Document>;
+  listDocuments(tenantId: string, userPropertyId: string): Promise<Document[]>;
+  getDocument(tenantId: string, id: string): Promise<Document | undefined>;
+  deleteDocument(tenantId: string, id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -548,6 +558,40 @@ export class DatabaseStorage implements IStorage {
       .from(properties)
       .where(inArray(properties.zpid, zpids));
     return rows.map((r) => r.zpid);
+  }
+
+  // ---- Deal documents ----
+  async getUserPropertyById(tenantId: string, id: string): Promise<UserProperty | undefined> {
+    const [row] = await db
+      .select()
+      .from(userProperties)
+      .where(and(eq(userProperties.tenantId, tenantId), eq(userProperties.id, id)));
+    return row || undefined;
+  }
+
+  async createDocument(values: InsertDocument): Promise<Document> {
+    const [row] = await db.insert(documents).values(values).returning();
+    return row;
+  }
+
+  async listDocuments(tenantId: string, userPropertyId: string): Promise<Document[]> {
+    return db
+      .select()
+      .from(documents)
+      .where(and(eq(documents.tenantId, tenantId), eq(documents.userPropertyId, userPropertyId)))
+      .orderBy(desc(documents.uploadedAt));
+  }
+
+  async getDocument(tenantId: string, id: string): Promise<Document | undefined> {
+    const [row] = await db
+      .select()
+      .from(documents)
+      .where(and(eq(documents.tenantId, tenantId), eq(documents.id, id)));
+    return row || undefined;
+  }
+
+  async deleteDocument(tenantId: string, id: string): Promise<void> {
+    await db.delete(documents).where(and(eq(documents.tenantId, tenantId), eq(documents.id, id)));
   }
 }
 
