@@ -82,6 +82,16 @@ router.get('/api/watchlist/:propertyId/check', requireAuth, requireSubscription,
 });
 
 // Deals = tracked properties enriched with their property record.
+// The tenant's pipeline stages (board columns), ordered.
+router.get('/api/pipeline-stages', requireAuth, async (req: any, res) => {
+  try {
+    const stages = await storage.getPipelineStages(req.ctx.tenantId);
+    res.json(stages);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/api/deals', requireAuth, async (req: any, res) => {
   try {
     const { tenantId, userId } = req.ctx;

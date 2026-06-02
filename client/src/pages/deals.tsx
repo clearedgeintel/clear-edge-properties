@@ -1,16 +1,16 @@
-import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautiful-dnd";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MoreVertical, Edit, Trash2, Calendar, DollarSign, Home, Upload } from "lucide-react";
+import { Plus, MoreVertical, FileText, Trash2, Calendar, DollarSign, Home, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -18,856 +18,372 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
-import { type DealStage, DEAL_STAGES } from "@/lib/deals";
+import { apiRequest } from "@/lib/queryClient";
+import { useDeals, type PipelineDeal, type PipelineStage } from "@/lib/deals";
 
-interface Deal {
-  id: string;
-  title: string;
-  address: string;
-  price: number;
-  score: number;
-  stage: DealStage;
-  notes?: string;
-  loiFile?: {
-    name: string;
-    url: string;
-    uploadedAt: Date;
-  };
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-// A tracked property as returned by GET /api/deals (user_properties + property).
-interface SavedProperty {
-  id: string;
-  zpid: string;
-  property: {
-    zpid: string;
-    fullAddress?: string | null;
-    addressStreet?: string | null;
-    addressCity?: string | null;
-    addressState?: string | null;
-    addressZip?: string | null;
-    price?: string | null;
-    listPrice?: string | null;
-    investmentScorePercent?: string | null;
-  } | null;
-}
-
-const STORAGE_KEY = "clearedge_deals";
+const DEALS_KEY = ["/api/deals"];
 
 export default function DealsPage() {
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
-  const [isLoiUploadOpen, setIsLoiUploadOpen] = useState(false);
-  const [pendingDealForLoi, setPendingDealForLoi] = useState<string | null>(null);
-  const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
+  const { stages, staged, unstaged, isLoading } = useDeals();
+  const qc = useQueryClient();
   const { toast } = useToast();
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [notesDeal, setNotesDeal] = useState<PipelineDeal | null>(null);
+  const [selectedDeal, setSelectedDeal] = useState<PipelineDeal | null>(null);
 
-  // The user's saved/tracked properties — the "Add Deal" dialog prompts from
-  // these so a deal is created from a real property rather than typed by hand.
-  const { data: savedProperties = [] } = useQuery<SavedProperty[]>({ queryKey: ["/api/deals"] });
+  // All board mutations are PATCH /api/deals/:id (user_properties). Optimistic so
+  // drag-and-drop feels instant; rolls back on error.
+  const patch = useMutation({
+    mutationFn: async ({ id, body }: { id: string; body: Record<string, any> }) =>
+      (await apiRequest("PATCH", `/api/deals/${id}`, body)).json(),
+    onMutate: async ({ id, body }) => {
+      await qc.cancelQueries({ queryKey: DEALS_KEY });
+      const prev = qc.getQueryData<any[]>(DEALS_KEY);
+      qc.setQueryData<any[]>(DEALS_KEY, (old = []) =>
+        old.map((it) => (it.id === id ? { ...it, ...body } : it)),
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(DEALS_KEY, ctx.prev);
+      toast({ title: "Update failed", description: "Could not save the change.", variant: "destructive" });
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: DEALS_KEY }),
+  });
 
-  // Load deals from localStorage on mount
-  useEffect(() => {
-    const savedDeals = localStorage.getItem(STORAGE_KEY);
-    if (savedDeals) {
-      try {
-        const parsedDeals = JSON.parse(savedDeals).map((deal: any) => ({
-          ...deal,
-          createdAt: new Date(deal.createdAt),
-          updatedAt: new Date(deal.updatedAt),
-        }));
-        setDeals(parsedDeals);
-      } catch (error) {
-        console.error("Failed to load deals from localStorage:", error);
-      }
-    }
-  }, []);
-
-  // Save deals to localStorage whenever deals change
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(deals));
-  }, [deals]);
+  const move = (id: string, stageId: string | null) => patch.mutate({ id, body: { pipelineStageId: stageId } });
 
   const handleDragEnd = (result: DropResult) => {
     if (!result.destination) return;
-
     const { source, destination, draggableId } = result;
-    
     if (source.droppableId === destination.droppableId) return;
-
-    const newStage = destination.droppableId as DealStage;
-    
-    // If moving to LOI Sent stage, offer optional file upload
-    if (newStage === "loi_sent") {
-      setPendingDealForLoi(draggableId);
-      setIsLoiUploadOpen(true);
-      return;
-    }
-    
-    setDeals(prevDeals => 
-      prevDeals.map(deal => 
-        deal.id === draggableId 
-          ? { ...deal, stage: newStage, updatedAt: new Date() }
-          : deal
-      )
-    );
-
-    toast({
-      title: "Deal Updated",
-      description: `Deal moved to ${DEAL_STAGES.find(s => s.id === newStage)?.title}`,
-    });
+    move(draggableId, destination.droppableId);
+    const stageName = stages.find((s) => s.id === destination.droppableId)?.name;
+    toast({ title: "Deal moved", description: stageName ? `Moved to ${stageName}` : undefined });
   };
 
-  const addDeal = (dealData: Omit<Deal, "id" | "createdAt" | "updatedAt">) => {
-    const newDeal: Deal = {
-      ...dealData,
-      id: crypto.randomUUID(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    
-    setDeals(prev => [...prev, newDeal]);
-    setIsAddModalOpen(false);
-    
-    toast({
-      title: "Deal Added",
-      description: "New deal has been added to your pipeline",
-    });
-  };
-
-  const updateDeal = (updatedDeal: Deal) => {
-    setDeals(prev => 
-      prev.map(deal => 
-        deal.id === updatedDeal.id 
-          ? { ...updatedDeal, updatedAt: new Date() }
-          : deal
-      )
-    );
-    setEditingDeal(null);
-    
-    toast({
-      title: "Deal Updated",
-      description: "Deal has been successfully updated",
-    });
-  };
-
-  const deleteDeal = (dealId: string) => {
-    setDeals(prev => prev.filter(deal => deal.id !== dealId));
-    
-    toast({
-      title: "Deal Deleted",
-      description: "Deal has been removed from your pipeline",
-    });
-  };
-
-  const getDealsByStage = (stage: DealStage) => 
-    deals.filter(deal => deal.stage === stage);
-
-  const getScoreBadgeColor = (score: number) => {
-    if (score >= 80) return "bg-green-100 text-green-800";
-    if (score >= 60) return "bg-yellow-100 text-yellow-800";
-    return "bg-red-100 text-red-800";
-  };
-
-  const handleLoiUpload = (file: File) => {
-    if (!pendingDealForLoi) return;
-
-    // Create a blob URL for the file (in a real app, you'd upload to a server)
-    const url = URL.createObjectURL(file);
-    
-    setDeals(prevDeals => 
-      prevDeals.map(deal => 
-        deal.id === pendingDealForLoi 
-          ? { 
-              ...deal, 
-              stage: "loi_sent", 
-              loiFile: {
-                name: file.name,
-                url: url,
-                uploadedAt: new Date()
-              },
-              updatedAt: new Date() 
-            }
-          : deal
-      )
-    );
-
-    setIsLoiUploadOpen(false);
-    setPendingDealForLoi(null);
-    
-    toast({
-      title: "LOI Uploaded",
-      description: "Deal moved to LOI Sent with attached document",
-    });
-  };
-
-  const handleLoiCancel = () => {
-    setIsLoiUploadOpen(false);
-    setPendingDealForLoi(null);
-  };
-
-  const handleLoiSkip = () => {
-    if (!pendingDealForLoi) return;
-
-    setDeals(prevDeals => 
-      prevDeals.map(deal => 
-        deal.id === pendingDealForLoi 
-          ? { ...deal, stage: "loi_sent", updatedAt: new Date() }
-          : deal
-      )
-    );
-
-    setIsLoiUploadOpen(false);
-    setPendingDealForLoi(null);
-    
-    toast({
-      title: "Deal Updated",
-      description: "Deal moved to LOI Sent",
-    });
-  };
+  const dealsByStage = (stageId: string) => staged.filter((d) => d.stageId === stageId);
 
   return (
     <div className="p-6 max-w-full overflow-x-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Deal Pipeline</h1>
-          <p className="text-gray-600 mt-1">Track your real estate deals through each stage</p>
+          <p className="text-gray-600 mt-1">Track your saved properties through each stage</p>
         </div>
-        
-        <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-          <DialogTrigger asChild>
-            <Button className="flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              Add Deal
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Deal</DialogTitle>
-            </DialogHeader>
-            <DealForm onSubmit={addDeal} savedProperties={savedProperties} />
-          </DialogContent>
-        </Dialog>
+        <Button className="flex items-center gap-2" onClick={() => setIsAddOpen(true)}>
+          <Plus className="w-4 h-4" />
+          Add Deal
+        </Button>
       </div>
 
-      <DragDropContext onDragEnd={handleDragEnd}>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 min-h-[600px]">
-          {DEAL_STAGES.map(stage => (
-            <div key={stage.id} className="flex flex-col">
-              <div className="mb-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="font-semibold text-gray-900">{stage.title}</h2>
-                  <Badge variant="outline" className={stage.color}>
-                    {getDealsByStage(stage.id).length}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-24 text-slate-500">
+          <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Loading pipeline…
+        </div>
+      ) : stages.length === 0 ? (
+        <Card><CardContent className="py-12 text-center text-slate-500">No pipeline stages configured.</CardContent></Card>
+      ) : (
+        <DragDropContext onDragEnd={handleDragEnd}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 min-h-[600px]">
+            {stages.map((stage) => (
+              <div key={stage.id} className="flex flex-col">
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
+                    {stage.icon && <span>{stage.icon}</span>}
+                    {stage.name}
+                  </h2>
+                  <Badge
+                    variant="outline"
+                    style={{ borderColor: stage.color || undefined, color: stage.color || undefined }}
+                  >
+                    {dealsByStage(stage.id).length}
                   </Badge>
                 </div>
+
+                <Droppable droppableId={stage.id}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className={`flex-1 p-2 rounded-lg border-2 border-dashed transition-colors ${
+                        snapshot.isDraggingOver ? "border-blue-400 bg-blue-50" : "border-gray-200 bg-gray-50"
+                      }`}
+                    >
+                      {dealsByStage(stage.id).map((deal, index) => (
+                        <Draggable key={deal.id} draggableId={deal.id} index={index}>
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              className={`mb-2 transition-transform ${snapshot.isDragging ? "rotate-1 scale-105" : ""}`}
+                            >
+                              <DealCard
+                                deal={deal}
+                                onClick={setSelectedDeal}
+                                onEditNotes={setNotesDeal}
+                                onRemove={(id) => {
+                                  move(id, null);
+                                  toast({ title: "Removed from pipeline", description: "Still saved in your tracked properties." });
+                                }}
+                              />
+                            </div>
+                          )}
+                        </Draggable>
+                      ))}
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
               </div>
-              
-              <Droppable droppableId={stage.id}>
-                {(provided, snapshot) => (
-                  <div
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                    className={`flex-1 p-3 rounded-lg border-2 border-dashed transition-colors ${
-                      snapshot.isDraggingOver 
-                        ? "border-blue-400 bg-blue-50" 
-                        : "border-gray-200 bg-gray-50"
-                    }`}
-                  >
-                    {getDealsByStage(stage.id).map((deal, index) => (
-                      <Draggable key={deal.id} draggableId={deal.id} index={index}>
-                        {(provided, snapshot) => (
-                          <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            className={`mb-3 transition-transform ${
-                              snapshot.isDragging ? "rotate-2 scale-105" : ""
-                            }`}
-                          >
-                            <DealCard 
-                              deal={deal} 
-                              onEdit={setEditingDeal}
-                              onDelete={deleteDeal}
-                              getScoreBadgeColor={getScoreBadgeColor}
-                              onClick={setSelectedDeal}
-                            />
-                          </div>
-                        )}
-                      </Draggable>
-                    ))}
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
-            </div>
-          ))}
-        </div>
-      </DragDropContext>
-
-      {/* Edit Deal Modal */}
-      <Dialog open={!!editingDeal} onOpenChange={() => setEditingDeal(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Deal</DialogTitle>
-          </DialogHeader>
-          {editingDeal && (
-            <DealForm 
-              deal={editingDeal}
-              onSubmit={updateDeal}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* LOI Upload Modal */}
-      <Dialog open={isLoiUploadOpen} onOpenChange={handleLoiCancel}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Upload LOI Document</DialogTitle>
-          </DialogHeader>
-          <LOIUploadForm onUpload={handleLoiUpload} onCancel={handleLoiCancel} onSkip={handleLoiSkip} />
-        </DialogContent>
-      </Dialog>
-
-      {/* Deal Details Modal */}
-      <Dialog open={!!selectedDeal} onOpenChange={() => setSelectedDeal(null)}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Deal Details</DialogTitle>
-          </DialogHeader>
-          {selectedDeal && <DealDetailsModal deal={selectedDeal} />}
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-// Deal Details Modal Component
-function DealDetailsModal({ deal }: { deal: Deal }) {
-  return (
-    <div className="space-y-6">
-      {/* Property Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h3 className="text-xl font-bold text-slate-900">
-            {deal.title}
-          </h3>
-          <p className="text-slate-600 mt-1">
-            {deal.address}
-          </p>
-        </div>
-        <div className="text-right">
-          <div className="text-2xl font-bold text-slate-900">
-            ${deal.price?.toLocaleString()}
+            ))}
           </div>
-          <div className="text-sm text-slate-500">
-            Score: {deal.score || 'N/A'}
-          </div>
-        </div>
-      </div>
-
-      {/* Deal Status and Notes */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <h4 className="font-semibold text-slate-900 mb-2">Deal Status</h4>
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-slate-600">Current Stage:</span>
-              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                deal.stage === 'analyzing' ? 'bg-blue-100 text-blue-700' :
-                deal.stage === 'loi_sent' ? 'bg-yellow-100 text-yellow-700' :
-                deal.stage === 'under_contract' ? 'bg-orange-100 text-orange-700' :
-                deal.stage === 'closed' ? 'bg-green-100 text-green-700' :
-                'bg-gray-100 text-gray-700'
-              }`}>
-                {deal.stage?.replace('_', ' ').toUpperCase()}
-              </span>
-            </div>
-            <div className="text-sm text-slate-600">
-              Added: {new Date(deal.createdAt).toLocaleDateString()}
-            </div>
-            {deal.updatedAt && (
-              <div className="text-sm text-slate-600">
-                Updated: {new Date(deal.updatedAt).toLocaleDateString()}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {deal.notes && (
-          <div>
-            <h4 className="font-semibold text-slate-900 mb-2">Notes</h4>
-            <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg">
-              {deal.notes}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* LOI File if uploaded */}
-      {deal.loiFile && (
-        <div>
-          <h4 className="font-semibold text-slate-900 mb-3">Letter of Intent</h4>
-          <div className="flex items-center space-x-3 p-3 bg-slate-50 rounded-lg">
-            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <div className="text-sm font-medium text-slate-900">
-                {deal.loiFile.name}
-              </div>
-              <div className="text-xs text-slate-500">
-                Uploaded {new Date(deal.loiFile.uploadedAt).toLocaleDateString()}
-              </div>
-            </div>
-            <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700">
-              View
-            </Button>
-          </div>
-        </div>
+        </DragDropContext>
       )}
 
-      {/* Deal Summary */}
-      <div>
-        <h4 className="font-semibold text-slate-900 mb-3">Deal Summary</h4>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div className="bg-slate-50 p-3 rounded-lg">
-            <div className="text-xs text-slate-500 uppercase tracking-wide">Property Price</div>
-            <div className="text-lg font-semibold text-slate-900">
-              ${deal.price?.toLocaleString()}
-            </div>
-          </div>
-          <div className="bg-slate-50 p-3 rounded-lg">
-            <div className="text-xs text-slate-500 uppercase tracking-wide">Score</div>
-            <div className={`text-lg font-semibold ${
-              deal.score >= 70 ? 'text-green-600' : 
-              deal.score >= 50 ? 'text-yellow-600' : 
-              'text-red-600'
-            }`}>
-              {deal.score || 'N/A'}
-            </div>
-          </div>
-          <div className="bg-slate-50 p-3 rounded-lg">
-            <div className="text-xs text-slate-500 uppercase tracking-wide">Stage</div>
-            <div className="text-lg font-semibold text-slate-900 capitalize">
-              {deal.stage?.replace('_', ' ')}
-            </div>
-          </div>
-        </div>
-      </div>
+      <AddDealDialog
+        open={isAddOpen}
+        onOpenChange={setIsAddOpen}
+        unstaged={unstaged}
+        stages={stages}
+        onAdd={(id, stageId) => {
+          patch.mutate({ id, body: { pipelineStageId: stageId } });
+          setIsAddOpen(false);
+          toast({ title: "Deal added", description: "Property added to your pipeline." });
+        }}
+      />
+
+      <NotesDialog
+        deal={notesDeal}
+        onClose={() => setNotesDeal(null)}
+        onSave={(id, notes) => {
+          patch.mutate({ id, body: { customNotes: notes } });
+          setNotesDeal(null);
+          toast({ title: "Notes saved" });
+        }}
+      />
+
+      <Dialog open={!!selectedDeal} onOpenChange={() => setSelectedDeal(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>Deal Details</DialogTitle></DialogHeader>
+          {selectedDeal && <DealDetails deal={selectedDeal} stages={stages} />}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-interface DealCardProps {
-  deal: Deal;
-  onEdit: (deal: Deal) => void;
-  onDelete: (dealId: string) => void;
-  getScoreBadgeColor: (score: number) => string;
-  onClick: (deal: Deal) => void;
+function scoreBadgeColor(score: number) {
+  if (score >= 80) return "bg-green-100 text-green-800";
+  if (score >= 60) return "bg-yellow-100 text-yellow-800";
+  return "bg-red-100 text-red-800";
 }
 
-function DealCard({ deal, onEdit, onDelete, getScoreBadgeColor, onClick }: DealCardProps) {
+function DealCard({
+  deal,
+  onClick,
+  onEditNotes,
+  onRemove,
+}: {
+  deal: PipelineDeal;
+  onClick: (d: PipelineDeal) => void;
+  onEditNotes: (d: PipelineDeal) => void;
+  onRemove: (id: string) => void;
+}) {
   return (
-    <Card 
-      className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-white"
-      onClick={() => onClick(deal)}
-    >
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
+    <Card className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-white" onClick={() => onClick(deal)}>
+      <CardHeader className="pb-2 px-3 pt-3">
+        <div className="flex items-start justify-between gap-1">
           <div className="flex-1 min-w-0">
-            <CardTitle className="text-sm font-medium text-gray-900 truncate">
-              {deal.title}
-            </CardTitle>
-            <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-              <Home className="w-3 h-3" />
-              {deal.address}
+            <CardTitle className="text-sm font-medium text-gray-900 truncate">{deal.title}</CardTitle>
+            <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+              <Home className="w-3 h-3 flex-shrink-0" />
+              <span className="truncate">{deal.address}</span>
             </p>
           </div>
-          
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                <MoreVertical className="w-4 h-4" />
-              </Button>
+            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0"><MoreVertical className="w-4 h-4" /></Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEdit(deal)}>
-                <Edit className="w-4 h-4 mr-2" />
-                Edit
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem onClick={() => onEditNotes(deal)}>
+                <FileText className="w-4 h-4 mr-2" /> Edit notes
               </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => onDelete(deal.id)}
-                className="text-red-600"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
+              <DropdownMenuItem onClick={() => onRemove(deal.id)} className="text-red-600">
+                <Trash2 className="w-4 h-4 mr-2" /> Remove from pipeline
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </CardHeader>
-      
-      <CardContent className="pt-0">
-        <div className="space-y-3">
+      <CardContent className="pt-0 px-3 pb-3">
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1 text-sm font-medium">
-              <DollarSign className="w-4 h-4 text-green-600" />
-              ${deal.price.toLocaleString()}
-            </div>
-            <Badge className={getScoreBadgeColor(deal.score)}>
-              {deal.score}
-            </Badge>
+            <span className="flex items-center gap-1 text-sm font-medium">
+              <DollarSign className="w-3.5 h-3.5 text-green-600" />
+              {deal.price ? deal.price.toLocaleString() : "—"}
+            </span>
+            <Badge className={scoreBadgeColor(deal.score)}>{deal.score || "—"}</Badge>
           </div>
-          
-          {deal.loiFile && (
-            <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
-              <Upload className="w-3 h-3" />
-              LOI Attached: {deal.loiFile.name}
+          {deal.notes && <p className="text-xs text-gray-600 line-clamp-2">{deal.notes}</p>}
+          {deal.updatedAt && (
+            <div className="flex items-center gap-1 text-xs text-gray-400">
+              <Calendar className="w-3 h-3" />
+              {formatDistanceToNow(new Date(deal.updatedAt), { addSuffix: true })}
             </div>
           )}
-          
-          {deal.notes && (
-            <p className="text-xs text-gray-600 line-clamp-2">
-              {deal.notes}
-            </p>
-          )}
-          
-          <div className="flex items-center gap-1 text-xs text-gray-500">
-            <Calendar className="w-3 h-3" />
-            Updated {formatDistanceToNow(deal.updatedAt, { addSuffix: true })}
-          </div>
         </div>
       </CardContent>
     </Card>
   );
 }
 
-interface DealFormProps {
-  deal?: Deal;
-  onSubmit: (deal: any) => void;
-  savedProperties?: SavedProperty[];
-}
-
-function DealForm({ deal, onSubmit, savedProperties = [] }: DealFormProps) {
-  const [formData, setFormData] = useState({
-    title: deal?.title || "",
-    address: deal?.address || "",
-    price: deal?.price || 0,
-    score: deal?.score || 0,
-    stage: deal?.stage || "analyzing" as DealStage,
-    notes: deal?.notes || "",
-  });
-  const [selectedZpid, setSelectedZpid] = useState<string | null>(null);
-
-  // Only offer the saved-property picker when adding (not editing), and only
-  // for tracked rows that still have a backing property.
-  const pickable = !deal ? savedProperties.filter((p) => p.property) : [];
-
-  const prefillFrom = (p: SavedProperty) => {
-    const prop = p.property!;
-    const address =
-      prop.fullAddress ||
-      [prop.addressStreet, prop.addressCity, prop.addressState, prop.addressZip].filter(Boolean).join(", ");
-    setSelectedZpid(p.zpid);
-    setFormData((prev) => ({
-      ...prev,
-      title: prop.fullAddress || prop.addressStreet || `Property ${prop.zpid}`,
-      address,
-      price: Math.round(Number(prop.listPrice ?? prop.price ?? 0)) || 0,
-      score: Math.round(Number(prop.investmentScorePercent ?? 0)) || 0,
-    }));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!formData.title || !formData.address || formData.price <= 0) {
-      return;
-    }
-
-    if (deal) {
-      onSubmit({ ...deal, ...formData });
-    } else {
-      onSubmit(formData);
-    }
-  };
+function AddDealDialog({
+  open,
+  onOpenChange,
+  unstaged,
+  stages,
+  onAdd,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  unstaged: PipelineDeal[];
+  stages: PipelineStage[];
+  onAdd: (id: string, stageId: string) => void;
+}) {
+  const [stageId, setStageId] = useState<string>("");
+  const target = stageId || stages[0]?.id || "";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {!deal && (
-        <div>
-          <Label>Add from saved properties</Label>
-          {pickable.length > 0 ? (
-            <>
-              <div className="mt-1.5 max-h-44 overflow-y-auto border rounded-md divide-y">
-                {pickable.map((p) => {
-                  const prop = p.property!;
-                  const addr =
-                    prop.fullAddress ||
-                    [prop.addressStreet, prop.addressCity].filter(Boolean).join(", ") ||
-                    prop.zpid;
-                  const price = Number(prop.listPrice ?? prop.price ?? 0);
-                  const score = Math.round(Number(prop.investmentScorePercent ?? 0));
-                  return (
-                    <button
-                      type="button"
-                      key={p.id}
-                      onClick={() => prefillFrom(p)}
-                      className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 hover:bg-slate-50 ${
-                        selectedZpid === p.zpid ? "bg-blue-50" : ""
-                      }`}
-                    >
-                      <span className="truncate flex items-center gap-1.5">
-                        <Home className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                        {addr}
-                      </span>
-                      <span className="text-xs text-slate-500 whitespace-nowrap">
-                        {price ? `$${price.toLocaleString()}` : "—"}{score ? ` · ${score}` : ""}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Pick one to prefill, then adjust below — or enter manually.
-              </p>
-            </>
-          ) : (
-            <p className="text-xs text-slate-500 mt-1">
-              No saved properties yet. Save properties from search, or enter a deal manually below.
-            </p>
-          )}
-        </div>
-      )}
-
-      <div>
-        <Label htmlFor="title">Property Name/Title</Label>
-        <Input
-          id="title"
-          value={formData.title}
-          onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-          placeholder="e.g., Downtown Duplex Investment"
-          required
-        />
-      </div>
-      
-      <div>
-        <Label htmlFor="address">Address</Label>
-        <Input
-          id="address"
-          value={formData.address}
-          onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-          placeholder="e.g., 123 Main St, City, State"
-          required
-        />
-      </div>
-      
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="price">Price ($)</Label>
-          <Input
-            id="price"
-            type="number"
-            value={formData.price}
-            onChange={(e) => setFormData(prev => ({ ...prev, price: Number(e.target.value) }))}
-            placeholder="450000"
-            min="0"
-            required
-          />
-        </div>
-        
-        <div>
-          <Label htmlFor="score">Score (0-100)</Label>
-          <Input
-            id="score"
-            type="number"
-            value={formData.score}
-            onChange={(e) => setFormData(prev => ({ ...prev, score: Number(e.target.value) }))}
-            placeholder="85"
-            min="0"
-            max="100"
-            required
-          />
-        </div>
-      </div>
-      
-      <div>
-        <Label htmlFor="stage">Stage</Label>
-        <select
-          id="stage"
-          value={formData.stage}
-          onChange={(e) => setFormData(prev => ({ ...prev, stage: e.target.value as DealStage }))}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          {DEAL_STAGES.map(stage => (
-            <option key={stage.id} value={stage.id}>
-              {stage.title}
-            </option>
-          ))}
-        </select>
-      </div>
-      
-      <div>
-        <Label htmlFor="notes">Notes (Optional)</Label>
-        <Textarea
-          id="notes"
-          value={formData.notes}
-          onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-          placeholder="Additional notes about this deal..."
-          rows={3}
-        />
-      </div>
-      
-      <div className="flex justify-end gap-3">
-        <Button type="submit" className="w-full">
-          {deal ? "Update Deal" : "Add Deal"}
-        </Button>
-      </div>
-    </form>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Add a deal from saved properties</DialogTitle></DialogHeader>
+        {unstaged.length === 0 ? (
+          <p className="text-sm text-slate-500 py-4">
+            Every saved property is already in your pipeline. Save more properties from search to add new deals.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-slate-500">Add to stage:</span>
+              <select
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                value={target}
+                onChange={(e) => setStageId(e.target.value)}
+              >
+                {stages.map((s) => (
+                  <option key={s.id} value={s.id}>{s.icon ? `${s.icon} ` : ""}{s.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="max-h-72 overflow-y-auto border rounded-md divide-y">
+              {unstaged.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => onAdd(d.id, target)}
+                  className="w-full text-left px-3 py-2.5 hover:bg-slate-50 flex items-center justify-between gap-2"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-slate-800 truncate">{d.title}</span>
+                    <span className="block text-xs text-slate-500 truncate">{d.address}</span>
+                  </span>
+                  <span className="text-xs text-slate-500 whitespace-nowrap flex items-center gap-2">
+                    {d.price ? `$${d.price.toLocaleString()}` : "—"}
+                    <Badge className={scoreBadgeColor(d.score)}>{d.score || "—"}</Badge>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
-interface LOIUploadFormProps {
-  onUpload: (file: File) => void;
-  onCancel: () => void;
-  onSkip: () => void;
+function NotesDialog({
+  deal,
+  onClose,
+  onSave,
+}: {
+  deal: PipelineDeal | null;
+  onClose: () => void;
+  onSave: (id: string, notes: string) => void;
+}) {
+  return (
+    <Dialog open={!!deal} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Deal notes</DialogTitle></DialogHeader>
+        {deal && <NotesForm key={deal.id} deal={deal} onClose={onClose} onSave={onSave} />}
+      </DialogContent>
+    </Dialog>
+  );
 }
 
-function LOIUploadForm({ onUpload, onCancel, onSkip }: LOIUploadFormProps) {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isDragOver, setIsDragOver] = useState(false);
+function NotesForm({
+  deal,
+  onClose,
+  onSave,
+}: {
+  deal: PipelineDeal;
+  onClose: () => void;
+  onSave: (id: string, notes: string) => void;
+}) {
+  const [notes, setNotes] = useState(deal.notes || "");
+  return (
+    <>
+      <Textarea rows={5} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes about this deal…" />
+      <DialogFooter>
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button onClick={() => onSave(deal.id, notes)}>Save notes</Button>
+      </DialogFooter>
+    </>
+  );
+}
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-    }
-  };
-
-  const handleDragOver = (event: React.DragEvent) => {
-    event.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (event: React.DragEvent) => {
-    event.preventDefault();
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (event: React.DragEvent) => {
-    event.preventDefault();
-    setIsDragOver(false);
-    
-    const file = event.dataTransfer.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-    }
-  };
-
-  const handleSubmit = () => {
-    if (selectedFile) {
-      onUpload(selectedFile);
-    }
-  };
-
+function DealDetails({ deal, stages }: { deal: PipelineDeal; stages: PipelineStage[] }) {
+  const stage = stages.find((s) => s.id === deal.stageId);
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-600">
-        Upload the LOI document if you have it, or skip to move the deal to "LOI Sent" stage without a file.
-      </p>
-      
-      <div
-        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-          isDragOver 
-            ? 'border-blue-400 bg-blue-50' 
-            : 'border-gray-300 hover:border-gray-400'
-        }`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-gray-900">
-            Drop your LOI document here, or click to browse
-          </p>
-          <p className="text-xs text-gray-500">
-            PDF, DOC, DOCX files only
-          </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="text-lg font-bold text-slate-900">{deal.title}</h3>
+          <p className="text-slate-600 text-sm">{deal.address}</p>
         </div>
-        
-        <input
-          type="file"
-          accept=".pdf,.doc,.docx"
-          onChange={handleFileSelect}
-          className="hidden"
-          id="file-upload"
-        />
-        <Label 
-          htmlFor="file-upload"
-          className="mt-4 inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
-        >
-          Select File
-        </Label>
+        <div className="text-right">
+          <div className="text-xl font-bold text-slate-900">{deal.price ? `$${deal.price.toLocaleString()}` : "—"}</div>
+          <div className="text-sm text-slate-500">Score: {deal.score || "N/A"}</div>
+        </div>
       </div>
-
-      {selectedFile && (
-        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-          <div className="flex items-center space-x-3">
-            <div className="flex-shrink-0">
-              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                <Upload className="w-4 h-4 text-blue-600" />
-              </div>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">{selectedFile.name}</p>
-              <p className="text-xs text-gray-500">
-                {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-              </p>
-            </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-slate-50 p-3 rounded-lg">
+          <div className="text-xs text-slate-500 uppercase tracking-wide">Stage</div>
+          <div className="text-sm font-semibold text-slate-900">{stage ? `${stage.icon || ""} ${stage.name}` : "—"}</div>
+        </div>
+        <div className="bg-slate-50 p-3 rounded-lg">
+          <div className="text-xs text-slate-500 uppercase tracking-wide">Updated</div>
+          <div className="text-sm font-semibold text-slate-900">
+            {deal.updatedAt ? new Date(deal.updatedAt).toLocaleDateString() : "—"}
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSelectedFile(null)}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
+        </div>
+      </div>
+      {deal.notes && (
+        <div>
+          <h4 className="font-semibold text-slate-900 mb-1 text-sm">Notes</h4>
+          <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg whitespace-pre-wrap">{deal.notes}</p>
         </div>
       )}
-
-      <div className="flex justify-end gap-3 pt-4">
-        <Button variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button 
-          variant="ghost" 
-          onClick={onSkip}
-          className="text-gray-600 hover:text-gray-800"
-        >
-          Skip Upload
-        </Button>
-        <Button 
-          onClick={handleSubmit} 
-          disabled={!selectedFile}
-          className="bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600"
-        >
-          Upload & Move to LOI Sent
-        </Button>
-      </div>
+      <a
+        href={`/property-details?zpid=${encodeURIComponent(deal.zpid)}`}
+        className="inline-flex items-center text-sm text-blue-600 hover:text-blue-700 font-medium"
+      >
+        View full property →
+      </a>
     </div>
   );
 }

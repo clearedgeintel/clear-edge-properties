@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +14,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { formatCurrency } from "@/lib/format";
-import { getDeals, DEAL_STAGES, type Deal } from "@/lib/deals";
+import { useDeals, isClosedStage } from "@/lib/deals";
 import type { Property } from "@shared/schema";
 import {
   Briefcase,
@@ -27,18 +26,16 @@ import {
 } from "lucide-react";
 
 export default function Portfolio() {
-  const [deals, setDeals] = useState<Deal[]>([]);
-
-  useEffect(() => {
-    setDeals(getDeals());
-  }, []);
+  // Pipeline deals are backend-persisted now (staged tracked properties).
+  const { staged: deals, stages } = useDeals();
+  const stageName = (id: string | null) => stages.find((s) => s.id === id)?.name;
 
   const { data: properties } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
   });
 
-  const closedDeals = deals.filter((d) => d.stage === "closed");
-  const activeDeals = deals.filter((d) => d.stage !== "closed");
+  const closedDeals = deals.filter((d) => isClosedStage(stageName(d.stageId)));
+  const activeDeals = deals.filter((d) => !isClosedStage(stageName(d.stageId)));
 
   const totalInvested = closedDeals.reduce((sum, d) => sum + d.price, 0);
   const activePipelineValue = activeDeals.reduce((sum, d) => sum + d.price, 0);
@@ -46,11 +43,11 @@ export default function Portfolio() {
     ? Math.round(closedDeals.reduce((sum, d) => sum + d.score, 0) / closedDeals.length)
     : 0;
 
-  // Build stage chart data
-  const stageChartData = DEAL_STAGES.map((stage) => ({
-    name: stage.title,
-    count: deals.filter((d) => d.stage === stage.id).length,
-    value: deals.filter((d) => d.stage === stage.id).reduce((sum, d) => sum + d.price, 0),
+  // Build stage chart data from the tenant's pipeline stages.
+  const stageChartData = stages.map((stage) => ({
+    name: stage.name,
+    count: deals.filter((d) => d.stageId === stage.id).length,
+    value: deals.filter((d) => d.stageId === stage.id).reduce((sum, d) => sum + d.price, 0),
   }));
 
   const STAGE_COLORS = ["#3b82f6", "#eab308", "#f97316", "#22c55e"];
@@ -164,13 +161,13 @@ export default function Portfolio() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {DEAL_STAGES.map((stage) => {
-                  const stageDeals = deals.filter((d) => d.stage === stage.id);
+                {stages.map((stage) => {
+                  const stageDeals = deals.filter((d) => d.stageId === stage.id);
                   const stageValue = stageDeals.reduce((sum, d) => sum + d.price, 0);
                   return (
                     <div key={stage.id} className="space-y-1">
                       <div className="flex items-center justify-between">
-                        <Badge className={stage.color}>{stage.title}</Badge>
+                        <Badge variant="outline" style={{ borderColor: stage.color || undefined, color: stage.color || undefined }}>{stage.icon ? `${stage.icon} ` : ""}{stage.name}</Badge>
                         <span className="text-sm text-slate-500">
                           {stageDeals.length} deals &middot; {formatCurrency(stageValue)}
                         </span>
@@ -222,7 +219,7 @@ export default function Portfolio() {
                           <ScoreBadge investmentScorePercent={deal.score} />
                         </td>
                         <td className="py-2 hidden sm:table-cell text-slate-500">
-                          {new Date(deal.updatedAt).toLocaleDateString()}
+                          {deal.updatedAt ? new Date(deal.updatedAt).toLocaleDateString() : "—"}
                         </td>
                       </tr>
                     ))}

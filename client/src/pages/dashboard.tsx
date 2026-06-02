@@ -19,9 +19,9 @@ import {
   User,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
-import { getDeals, DEAL_STAGES, type Deal } from "@/lib/deals";
+import { useDeals, type PipelineDeal } from "@/lib/deals";
 import type { Property, UserProperty, User as DbUser, Tenant } from "@shared/schema";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 const CHECKLIST_DISMISSED_KEY = "clearedge_checklist_dismissed";
 
@@ -31,7 +31,7 @@ interface ChecklistItem {
   id: string;
   label: string;
   href: string;
-  check: (ctx: { watchlist?: TrackedProperty[]; deals: Deal[]; properties?: Property[] }) => boolean;
+  check: (ctx: { watchlist?: TrackedProperty[]; deals: PipelineDeal[]; properties?: Property[] }) => boolean;
 }
 
 const CHECKLIST_ITEMS: ChecklistItem[] = [
@@ -43,14 +43,11 @@ const CHECKLIST_ITEMS: ChecklistItem[] = [
 ];
 
 export default function Dashboard() {
-  const [deals, setDeals] = useState<Deal[]>([]);
+  // Pipeline deals come from the backend now; only staged properties count.
+  const { staged: deals, stages } = useDeals();
   const [checklistDismissed, setChecklistDismissed] = useState(
     () => localStorage.getItem(CHECKLIST_DISMISSED_KEY) === "true"
   );
-
-  useEffect(() => {
-    setDeals(getDeals());
-  }, []);
 
   const { data: auth } = useQuery<{ user: DbUser; tenant: Tenant }>({
     queryKey: ["/api/auth/user"],
@@ -76,9 +73,11 @@ export default function Dashboard() {
         .slice(0, 5)
     : undefined;
 
-  const dealsByStage = DEAL_STAGES.map((stage) => ({
-    ...stage,
-    count: deals.filter((d) => d.stage === stage.id).length,
+  const dealsByStage = stages.map((stage) => ({
+    id: stage.id,
+    name: stage.name,
+    color: stage.color,
+    count: deals.filter((d) => d.stageId === stage.id).length,
   }));
 
   const totalPipelineValue = deals.reduce((sum, d) => sum + d.price, 0);
@@ -256,7 +255,7 @@ export default function Dashboard() {
                   {dealsByStage.map((stage) => (
                     <div key={stage.id} className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Badge className={stage.color}>{stage.title}</Badge>
+                        <Badge variant="outline" style={{ borderColor: stage.color || undefined, color: stage.color || undefined }}>{stage.name}</Badge>
                       </div>
                       <span className="text-lg font-semibold">{stage.count}</span>
                     </div>

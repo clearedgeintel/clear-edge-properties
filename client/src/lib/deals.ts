@@ -1,82 +1,71 @@
-import { Property } from "@shared/schema";
+import { useQuery } from "@tanstack/react-query";
 
-export interface Deal {
+// ---------------------------------------------------------------------------
+// Deals are backend-persisted: a "deal" is a tracked property (user_properties)
+// whose board column is its pipeline stage (pipeline_stages). This replaces the
+// former localStorage model. The board, dashboard, and portfolio all read from
+// here so they stay consistent.
+// ---------------------------------------------------------------------------
+
+export interface PipelineStage {
   id: string;
+  name: string;
+  orderIndex: number;
+  color: string | null;
+  icon: string | null;
+  isDefault?: boolean | null;
+}
+
+// Normalized board card. `stageId` null means the property is tracked/saved but
+// not yet placed in the pipeline (it's pickable in "Add Deal").
+export interface PipelineDeal {
+  id: string; // user_properties uuid (the PATCH /api/deals/:id target)
+  zpid: string;
+  stageId: string | null;
+  notes: string;
+  isFavorite: boolean;
   title: string;
   address: string;
   price: number;
   score: number;
-  stage: DealStage;
-  notes?: string;
-  propertyId?: string; // Link to original property (zpid)
-  createdAt: Date;
-  updatedAt: Date;
+  updatedAt: string | null;
 }
 
-export type DealStage = "analyzing" | "loi_sent" | "under_contract" | "closed";
-
-export const DEAL_STAGES: { id: DealStage; title: string; color: string }[] = [
-  { id: "analyzing", title: "Analyzing", color: "bg-blue-100 text-blue-800" },
-  { id: "loi_sent", title: "LOI Sent", color: "bg-yellow-100 text-yellow-800" },
-  { id: "under_contract", title: "Under Contract", color: "bg-orange-100 text-orange-800" },
-  { id: "closed", title: "Closed", color: "bg-green-100 text-green-800" },
-];
-
-const STORAGE_KEY = "clearedge_deals";
-
-export function getDeals(): Deal[] {
-  const savedDeals = localStorage.getItem(STORAGE_KEY);
-  if (savedDeals) {
-    try {
-      return JSON.parse(savedDeals).map((deal: any) => ({
-        ...deal,
-        createdAt: new Date(deal.createdAt),
-        updatedAt: new Date(deal.updatedAt),
-      }));
-    } catch (error) {
-      console.error("Failed to load deals from localStorage:", error);
-    }
-  }
-  return [];
-}
-
-export function saveDeals(deals: Deal[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(deals));
-}
-
-export function addPropertyToPipeline(property: Property, stage: DealStage = "analyzing"): Deal {
-  const deals = getDeals();
-
-  // Check if property already exists in pipeline
-  const existingDeal = deals.find(deal => deal.propertyId === property.zpid);
-  if (existingDeal) {
-    throw new Error("Property already exists in pipeline");
-  }
-
-  const newDeal: Deal = {
-    id: crypto.randomUUID(),
-    title: `${property.address ?? ""}`,
-    address: `${property.addressCity ?? ""}, ${property.addressState ?? ""}`,
-    price: Number(property.price ?? 0),
-    score: Number(property.investmentScorePercent ?? 0),
-    stage,
-    propertyId: property.zpid,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+function mapDeal(item: any): PipelineDeal {
+  const p = item.property || {};
+  const address =
+    p.fullAddress ||
+    [p.addressStreet, p.addressCity, p.addressState, p.addressZip].filter(Boolean).join(", ");
+  return {
+    id: item.id,
+    zpid: item.zpid,
+    stageId: item.pipelineStageId ?? null,
+    notes: item.customNotes ?? "",
+    isFavorite: !!item.isFavorite,
+    title: p.fullAddress || p.addressStreet || `Property ${item.zpid}`,
+    address: address || "(address unavailable)",
+    price: Math.round(Number(p.listPrice ?? p.price ?? 0)) || 0,
+    score: Math.round(Number(p.investmentScorePercent ?? 0)) || 0,
+    updatedAt: item.updatedAt ?? null,
   };
-
-  const updatedDeals = [...deals, newDeal];
-  saveDeals(updatedDeals);
-
-  return newDeal;
 }
 
-export function isPropertyInPipeline(propertyId: string): boolean {
-  const deals = getDeals();
-  return deals.some(deal => deal.propertyId === propertyId);
-}
+// "Closed" stage (won). "Lost/Archived" does not match.
+export const isClosedStage = (name: string | undefined | null) => !!name && /closed/i.test(name);
 
-export function getPropertyDeal(propertyId: string): Deal | undefined {
-  const deals = getDeals();
-  return deals.find(deal => deal.propertyId === propertyId);
+// Fetches deals + stages from the backend and returns normalized board data.
+export function useDeals() {
+  const dealsQuery = useQuery<any[]>({ queryKey: ["/api/deals"] });
+  const stagesQuery = useQuery<PipelineStage[]>({ queryKey: ["/api/pipeline-stages"] });
+
+  const deals = (dealsQuery.data ?? []).map(mapDeal);
+  const stages = [...(stagesQuery.data ?? [])].sort((a, b) => a.orderIndex - b.orderIndex);
+
+  return {
+    deals,
+    stages,
+    staged: deals.filter((d) => d.stageId),
+    unstaged: deals.filter((d) => !d.stageId),
+    isLoading: dealsQuery.isLoading || stagesQuery.isLoading,
+  };
 }
