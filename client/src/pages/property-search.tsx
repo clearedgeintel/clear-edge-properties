@@ -662,7 +662,9 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
   const canEnrich =
     (platform === 'zillow' && !!property.id) || (platform === 'redfin' && !!redfinUrl);
 
-  const loadDetails = async () => {
+  const [autoFailed, setAutoFailed] = useState(false);
+
+  const loadDetails = async (isAuto = false) => {
     setLoadingDetail(true);
     setDetailError(null);
     try {
@@ -674,7 +676,10 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
         setDetail(await res.json());
       }
     } catch {
-      setDetailError('Could not load details. Try again.');
+      // Auto-enrich failures stay silent (e.g. a platform whose detail endpoint
+      // is unavailable shouldn't nag on every card); manual clicks show a retry.
+      if (isAuto) setAutoFailed(true);
+      else setDetailError('Could not load details. Try again.');
     } finally {
       setLoadingDetail(false);
     }
@@ -694,7 +699,7 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
       (entries) => {
         if (entries[0]?.isIntersecting && !autoTried.current) {
           autoTried.current = true;
-          loadDetails();
+          loadDetails(true);
           obs.disconnect();
         }
       },
@@ -823,29 +828,24 @@ function PropertyCard({ property, platform }: { property: any; platform: string 
           </div>
         )}
 
-        {/* Full enrichment (Zillow). High-scoring cards auto-load (lazily); the
-            rest expose a manual button. */}
-        {canEnrich && !detail && (
+        {/* Full enrichment. High-scoring cards auto-load (lazily) and stay
+            silent on failure; lower-scoring cards expose a manual button. */}
+        {canEnrich && !detail && shouldAutoEnrich && !autoFailed && (
           <div className="mt-3 pt-3 border-t border-slate-100">
-            {shouldAutoEnrich && !detailError ? (
-              <p className="text-xs text-slate-500 flex items-center justify-center gap-2 py-1">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Auto-loading full details (score {property.score})…
-              </p>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={loadDetails}
-                disabled={loadingDetail}
-              >
-                {loadingDetail ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Loading…</>
-                ) : (
-                  <><Sparkles className="w-4 h-4 mr-2" /> Load agent &amp; full details</>
-                )}
-              </Button>
-            )}
+            <p className="text-xs text-slate-500 flex items-center justify-center gap-2 py-1">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Auto-loading full details (score {property.score})…
+            </p>
+          </div>
+        )}
+        {canEnrich && !detail && (!shouldAutoEnrich || autoFailed) && (
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <Button variant="outline" size="sm" className="w-full" onClick={() => loadDetails(false)} disabled={loadingDetail}>
+              {loadingDetail ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Loading…</>
+              ) : (
+                <><Sparkles className="w-4 h-4 mr-2" /> Load agent &amp; full details</>
+              )}
+            </Button>
             {detailError && <p className="text-xs text-red-600 mt-2 text-center">{detailError}</p>}
           </div>
         )}
