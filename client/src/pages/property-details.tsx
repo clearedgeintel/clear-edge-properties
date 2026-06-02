@@ -763,7 +763,7 @@ export default function PropertyDetailsPage() {
                     {formatPercent(filteredAndSortedData.reduce((sum, item) => sum + item.capRate, 0) / filteredAndSortedData.length || 0)}
                   </p>
                 </div>
-                <TrendingUp className="w-8 h-8 text-purple-500" />
+                <TrendingUp className="w-8 h-8 text-brand-navy" />
               </div>
             </CardContent>
           </Card>

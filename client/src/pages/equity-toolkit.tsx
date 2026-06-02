@@ -650,7 +650,7 @@ export default function EquityToolkitPage() {
                     <div className="text-xs text-gray-600">at ${(75000).toLocaleString()} each</div>
                   </div>
                   
-                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg">
+                  <div className="bg-brand-light p-4 rounded-lg">
                     <h4 className="font-semibold mb-2">REIT Investment</h4>
                     <p className="text-sm text-gray-700 mb-3">
                       Diversify with real estate investment trusts

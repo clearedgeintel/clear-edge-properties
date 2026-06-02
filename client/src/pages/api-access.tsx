@@ -173,7 +173,7 @@ export default function ApiAccess() {
       {/* Header */}
       <div className="text-center space-y-4">
         <div className="flex items-center justify-center space-x-3">
-          <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
+          <div className="w-12 h-12 bg-gradient-to-br from-brand-blue to-brand-navy rounded-xl flex items-center justify-center">
             <Globe className="h-6 w-6 text-white" />
           </div>
           <div>
@@ -396,10 +396,10 @@ export default function ApiAccess() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {PRICING_TIERS.map((tier, index) => (
-              <Card key={index} className={`${tier.color} ${tier.popular ? 'ring-2 ring-purple-500' : ''} relative`}>
+              <Card key={index} className={`${tier.color} ${tier.popular ? 'ring-2 ring-brand-orange' : ''} relative`}>
                 {tier.popular && (
                   <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                    <Badge className="bg-purple-600">Most Popular</Badge>
+                    <Badge className="bg-brand-orange">Most Popular</Badge>
                   </div>
                 )}
                 <CardHeader className="text-center">

@@ -248,7 +248,7 @@ export default function DealComparisonPage() {
                     <Button 
                       onClick={analyzeDeals}
                       disabled={isAnalyzing}
-                      className="w-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600"
+                      className="w-full bg-gradient-to-r from-brand-blue to-brand-navy hover:opacity-90"
                     >
                       {isAnalyzing ? (
                         <>

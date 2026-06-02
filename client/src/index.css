@@ -87,6 +87,11 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
+
+  /* ClearEdge Props: Poppins for headings, Inter for body (set in tailwind). */
+  h1, h2, h3, h4, .font-heading {
+    font-family: "Poppins", "Inter", ui-sans-serif, system-ui, sans-serif;
+  }
 }
 
 /* Custom property score colors */

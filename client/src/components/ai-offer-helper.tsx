@@ -177,7 +177,7 @@ export function AIOfferHelper({ property, open, onOpenChange }: AIOfferHelperPro
                 <Button
                   onClick={handleGenerateOffer}
                   disabled={generateOfferMutation.isPending}
-                  className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0 py-3 text-lg font-semibold rounded-lg shadow-lg"
+                  className="w-full bg-gradient-to-r from-brand-blue to-brand-navy hover:opacity-90 text-white border-0 py-3 text-lg font-semibold rounded-lg shadow-lg"
                 >
                   {generateOfferMutation.isPending ? (
                     <Loader2 className="h-5 w-5 animate-spin mr-2" />
@@ -376,7 +376,7 @@ export function AIOfferHelper({ property, open, onOpenChange }: AIOfferHelperPro
                   </div>
                 ) : (
                   <div className="text-center h-64 flex flex-col items-center justify-center">
-                    <div className="w-16 h-16 bg-gradient-to-r from-blue-100 to-purple-100 rounded-full flex items-center justify-center mb-4">
+                    <div className="w-16 h-16 bg-brand-light rounded-full flex items-center justify-center mb-4">
                       <Brain className="w-8 h-8 text-blue-600" />
                     </div>
                     <h4 className="font-semibold text-slate-900 mb-2">Ready to Generate</h4>

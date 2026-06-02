@@ -116,7 +116,7 @@ export default function BrandingPage() {
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center space-x-3 mb-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl flex items-center justify-center shadow-lg">
+            <div className="w-12 h-12 bg-gradient-to-br from-brand-blue to-brand-navy rounded-xl flex items-center justify-center shadow-lg">
               <Palette className="w-6 h-6 text-white" />
             </div>
             <div>
@@ -189,8 +189,8 @@ export default function BrandingPage() {
                     {/* Visual Branding Section */}
                     <div className="border-t border-slate-200 pt-8">
                       <div className="flex items-center space-x-3 mb-6">
-                        <div className="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center">
-                          <Palette className="w-4 h-4 text-purple-600" />
+                        <div className="w-8 h-8 bg-brand-light rounded-lg flex items-center justify-center">
+                          <Palette className="w-4 h-4 text-brand-blue" />
                         </div>
                         <h2 className="text-lg font-semibold text-slate-900">Visual Branding</h2>
                       </div>

@@ -177,7 +177,7 @@ export function PropertyDrawer({ property, open, onOpenChange }: PropertyDrawerP
           )}
 
           {/* Compact Property Header */}
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+          <div className="bg-brand-light rounded-lg p-4 border border-slate-200">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-bold text-slate-900">{property.address}</h3>
               <div className="flex items-center gap-2">
@@ -314,7 +314,7 @@ export function PropertyDrawer({ property, open, onOpenChange }: PropertyDrawerP
           </div>
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-3 gap-3 pt-6 border-t border-gradient-to-r from-blue-200 to-purple-200">
+          <div className="grid grid-cols-3 gap-3 pt-6 border-t border-slate-200">
             <AddToPipelineButton
               property={property}
               variant="outline"
@@ -336,7 +336,7 @@ export function PropertyDrawer({ property, open, onOpenChange }: PropertyDrawerP
 
             <Button
               onClick={() => setShowOfferHelper(true)}
-              className="w-full bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white border-0"
+              className="w-full bg-gradient-to-r from-brand-blue to-brand-navy hover:opacity-90 text-white border-0"
             >
               <Brain className="mr-2 h-4 w-4" />
               AI Offer Helper
@@ -352,7 +352,7 @@ export function PropertyDrawer({ property, open, onOpenChange }: PropertyDrawerP
 
             <Button
               onClick={() => setShowLoiModal(true)}
-              className="w-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white border-0"
+              className="w-full bg-gradient-to-r from-brand-blue to-brand-navy hover:opacity-90 text-white border-0"
             >
               <FileText className="mr-2 h-4 w-4" />
               Letter of Intent

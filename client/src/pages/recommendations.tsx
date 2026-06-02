@@ -95,7 +95,7 @@ export default function Recommendations() {
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-yellow-500" />
+            <Sparkles className="h-6 w-6 text-brand-orange" />
             Recommendations
           </h1>
           <p className="text-slate-500 mt-1">
@@ -171,7 +171,7 @@ export default function Recommendations() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-yellow-500" />
+                  <Sparkles className="h-5 w-5 text-brand-orange" />
                   For You
                 </CardTitle>
               </CardHeader>

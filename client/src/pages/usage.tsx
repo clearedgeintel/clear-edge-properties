@@ -197,7 +197,7 @@ export default function Usage() {
                           {formatTime(analytics.totalUsage.totalTimeSpent || 0)}
                         </p>
                       </div>
-                      <Clock className="h-8 w-8 text-purple-600" />
+                      <Clock className="h-8 w-8 text-brand-navy" />
                     </div>
                   </CardContent>
                 </Card>
@@ -225,7 +225,7 @@ export default function Usage() {
                           {analytics.totalUsage.totalAIRequests || 0}
                         </p>
                       </div>
-                      <Brain className="h-8 w-8 text-indigo-600" />
+                      <Brain className="h-8 w-8 text-brand-blue" />
                     </div>
                   </CardContent>
                 </Card>
@@ -443,11 +443,11 @@ export default function Usage() {
                 </div>
                 
                 <div className="text-center p-6 bg-purple-50 rounded-lg">
-                  <BarChart3 className="h-12 w-12 text-purple-600 mx-auto mb-4" />
-                  <div className="text-2xl font-bold text-purple-600">
+                  <BarChart3 className="h-12 w-12 text-brand-navy mx-auto mb-4" />
+                  <div className="text-2xl font-bold text-brand-navy">
                     {(analytics?.totalUsage.totalAIRequests || 0) + (analytics?.totalUsage.totalExports || 0)}
                   </div>
-                  <div className="text-sm text-purple-600">Total Billable</div>
+                  <div className="text-sm text-brand-navy">Total Billable</div>
                   <div className="text-xs text-slate-600 mt-2">
                     Combined metered usage
                   </div>
