@@ -50,6 +50,14 @@ export interface RedfinProperty {
   // Detail-only enrichment (Redfin AVM / Rent estimate).
   valueEstimate?: number;
   rentEstimate?: number;
+  // Listing agent (seller's MLS agent) from the detail's MLS disclaimer. Name +
+  // phone + brokerage only — MLS attribution carries no agent email.
+  agent?: {
+    name: string;
+    phone: string | null;
+    company: string | null;
+    companyPhone: string | null;
+  };
 }
 
 export class RedfinApiService {
@@ -152,7 +160,14 @@ export class RedfinApiService {
   // returns Redfin's full page bundle; we pull the structured panels out of it.
   async getPropertyDetails(urlOrPath: string): Promise<RedfinProperty | null> {
     try {
-      const response = await this.makeRequest('/property/detail', { url: urlOrPath });
+      // Use the `/properties/detail-by-url` endpoint (the `/properties/*`
+      // namespace). The singular `/property/detail` is Forbidden on this plan,
+      // and detail-by-url additionally carries the listing agent. It needs a
+      // full https URL, not a path.
+      const fullUrl = urlOrPath.startsWith('http')
+        ? urlOrPath
+        : `https://www.redfin.com${urlOrPath.startsWith('/') ? '' : '/'}${urlOrPath}`;
+      const response = await this.makeRequest('/properties/detail-by-url', { url: fullUrl });
 
       const data = response?.data;
       if (!data || !data.aboveTheFold) {
@@ -240,6 +255,17 @@ export class RedfinApiService {
     const atf = data.aboveTheFold?.addressSectionInfo || {};
     const mh = data.mainHouseInfoPanelInfo?.mainHouseInfo || {};
     const init = data.initialInfo || {};
+    // Listing agent comes from the MLS disclaimer block (name + phone +
+    // brokerage). No email here — MLS attribution never includes it.
+    const mls = data.belowTheFold?.amenitiesInfo?.mlsDisclaimerInfo || {};
+    const agent = mls.listingAgentName
+      ? {
+          name: mls.listingAgentName as string,
+          phone: (mls.listingAgentNumber as string) || null,
+          company: (mls.listingBrokerName as string) || null,
+          companyPhone: (mls.listingBrokerNumber as string) || null,
+        }
+      : undefined;
     const basic = data.belowTheFold?.publicRecordsInfo?.basicInfo || {};
     const mediaPhotos: any[] = data.aboveTheFold?.mediaBrowserInfo?.photos || [];
     const rentInfo = data['rental-estimate']?.rentalEstimateInfo;
@@ -294,6 +320,7 @@ export class RedfinApiService {
       marketStats: undefined,
       valueEstimate: this.parseNumber(atf.avmInfo?.predictedValue ?? data.avm?.predictedValue),
       rentEstimate: this.parseNumber(rentInfo?.predictedValue),
+      agent,
     };
   }
 
