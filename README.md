@@ -121,8 +121,10 @@ The app uses a multi-stage Dockerfile -- Railway will detect and build it automa
 
 ## Maps
 
-All maps (Browse, Dashboard, Property Search results, the property drawer and the
-landing-page teaser) use Mapbox GL JS.
+All maps use Mapbox GL JS: Browse (split list/map), Dashboard, the property
+drawer, the landing-page teaser, and Property Search, where results default to a
+split view with cards on the left and a map on the right. Clicking a marker
+highlights its card; hovering a card highlights its marker.
 
 - Set `VITE_MAPBOX_ACCESS_TOKEN` to a **public** Mapbox token (`pk.*`). Create one at
   <https://account.mapbox.com/access-tokens/> and add URL restrictions for your

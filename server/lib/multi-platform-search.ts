@@ -408,11 +408,12 @@ export class MultiPlatformSearchService {
     return {
       id: property.id || '',
       platform: 'redfin',
+      // RedfinProperty.address is already structured; older shapes were flat.
       address: {
-        streetAddress: property.address || '',
-        city: property.city || '',
-        state: property.state || '',
-        zipCode: property.zipcode || '',
+        streetAddress: property.address?.streetAddress || (typeof property.address === 'string' ? property.address : ''),
+        city: property.address?.city || property.city || '',
+        state: property.address?.state || property.state || '',
+        zipCode: property.address?.zipCode || property.zipcode || '',
       },
       propertyType: property.homeType || property.propertyType || 'Single Family',
       price: typeof property.price === 'string' ? parseInt(property.price.replace(/[,$]/g, '')) : property.price || 0,
