@@ -16,11 +16,16 @@ export default {
       },
       colors: {
         brand: {
-          blue: "var(--brand-blue)",
-          navy: "var(--brand-navy)",
-          orange: "var(--brand-orange)",
-          light: "var(--brand-light)",
-          gray: "var(--brand-gray)",
+          blue: "hsl(var(--brand-blue) / <alpha-value>)",
+          navy: "hsl(var(--brand-navy) / <alpha-value>)",
+          orange: "hsl(var(--brand-orange) / <alpha-value>)",
+          light: "hsl(var(--brand-light) / <alpha-value>)",
+          gray: "hsl(var(--brand-gray) / <alpha-value>)",
+        },
+        score: {
+          high: "hsl(var(--score-high) / <alpha-value>)",
+          mid: "hsl(var(--score-mid) / <alpha-value>)",
+          low: "hsl(var(--score-low) / <alpha-value>)",
         },
         background: "var(--background)",
         foreground: "var(--foreground)",

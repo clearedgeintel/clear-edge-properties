@@ -58,7 +58,7 @@ export default function ApiDocs() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">API Documentation</h1>
           <p className="text-slate-500 mt-1">
-            Integrate RealDealTracker property data into your applications.
+            Integrate ClearEdge Props property data into your applications.
           </p>
         </div>
 

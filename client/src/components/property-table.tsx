@@ -8,11 +8,24 @@ import {
   Eye,
   Star,
   ExternalLink,
-  MapPin,
   GitCompare
 } from "lucide-react";
 import type { Property } from "@shared/schema";
 import { formatCurrency, formatPercent } from "@/lib/format";
+import { PropertyImageFallback } from "./states";
+
+function PropertyThumb({ src, alt }: { src: string | null; alt: string }) {
+  const [error, setError] = useState(false);
+  return (
+    <div className="h-12 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-slate-100">
+      {src && !error ? (
+        <img src={src} alt={alt} loading="lazy" className="h-full w-full object-cover" onError={() => setError(true)} />
+      ) : (
+        <PropertyImageFallback compact />
+      )}
+    </div>
+  );
+}
 
 interface PropertyTableProps {
   properties: Property[];
@@ -159,17 +172,7 @@ export function PropertyTable({
                 )}
                 <td className="p-2">
                   <div className="flex items-start gap-2">
-                    {property.imgMain ? (
-                      <img
-                        src={property.imgMain}
-                        alt={property.address ?? ''}
-                        className="w-16 h-12 object-cover rounded-lg flex-shrink-0"
-                      />
-                    ) : (
-                      <div className="w-16 h-12 bg-slate-200 rounded-lg flex-shrink-0 flex items-center justify-center">
-                        <MapPin className="h-4 w-4 text-slate-400" />
-                      </div>
-                    )}
+                    <PropertyThumb src={property.imgMain} alt={property.address ?? ''} />
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-slate-900 truncate">{property.address}</p>
                       <p className="text-sm text-slate-600 truncate">

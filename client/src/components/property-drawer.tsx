@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,8 @@ import { AICommentary } from "./ai-commentary";
 import { AIOfferHelper } from "./ai-offer-helper";
 import { AIUnderwriting } from "./ai-underwriting";
 import { AddToPipelineButton } from "./add-to-pipeline-button";
+import { PropertyMap, propertyToMapPoint } from "./property-map";
+import { PropertyImageFallback } from "./states";
 
 interface PropertyDrawerProps {
   property: Property | null;
@@ -27,6 +29,11 @@ type TrackedItem = UserProperty & { property: Property | null };
 
 export function PropertyDrawer({ property, open, onOpenChange }: PropertyDrawerProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [imageError, setImageError] = useState(false);
+  useEffect(() => {
+    setImageError(false);
+    setCurrentImageIndex(0);
+  }, [property?.zpid]);
   const [showLoiModal, setShowLoiModal] = useState(false);
   const [showOfferHelper, setShowOfferHelper] = useState(false);
   const [showUnderwriting, setShowUnderwriting] = useState(false);
@@ -75,9 +82,8 @@ export function PropertyDrawer({ property, open, onOpenChange }: PropertyDrawerP
   if (!property) return null;
 
   const galleryImages = [property.imgMain].filter(Boolean) as string[];
-  const images = galleryImages.length > 0 ? galleryImages : [
-    "https://images.unsplash.com/photo-1605146769289-440113cc3d00?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600"
-  ];
+  const images = galleryImages;
+  const mapPoint = propertyToMapPoint(property);
 
   const sqFt = Number(property.sizeSqFt ?? property.livingAreaSqFt);
   const price = Number(property.price);
@@ -128,11 +134,16 @@ export function PropertyDrawer({ property, open, onOpenChange }: PropertyDrawerP
         <div className="mt-6 space-y-6">
           {/* Image Carousel */}
           <div className="relative">
-            <img
-              src={images[currentImageIndex]}
-              alt={`Property image ${currentImageIndex + 1}`}
-              className="w-full h-64 object-cover rounded-lg"
-            />
+            {images.length > 0 && !imageError ? (
+              <img
+                src={images[currentImageIndex]}
+                alt={`Property image ${currentImageIndex + 1}`}
+                className="w-full h-64 object-cover rounded-lg"
+                onError={() => setImageError(true)}
+              />
+            ) : (
+              <PropertyImageFallback className="h-64 rounded-lg" />
+            )}
             <div className="absolute top-4 right-4">
               <CalculationBreakdown property={property} />
             </div>
@@ -312,6 +323,26 @@ export function PropertyDrawer({ property, open, onOpenChange }: PropertyDrawerP
               )}
             </div>
           </div>
+
+          {/* Location */}
+          {mapPoint.lat != null && mapPoint.lng != null && (
+            <div className="space-y-3">
+              <div className="border-b border-slate-200 pb-2">
+                <h4 className="text-lg font-semibold text-slate-900">Location</h4>
+              </div>
+              <div className="overflow-hidden rounded-lg border border-slate-200">
+                <PropertyMap
+                  points={[mapPoint]}
+                  selectedId={mapPoint.id}
+                  interactive={false}
+                  showLegend={false}
+                  styleVariant="streets"
+                  singlePointZoom={14}
+                  height="220px"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="grid grid-cols-3 gap-3 pt-6 border-t border-slate-200">

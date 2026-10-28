@@ -42,7 +42,41 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { formatCompactPrice as formatPrice } from '@/lib/format';
 import { apiRequest } from '@/lib/queryClient';
-import { Building2, Home, Search, Filter, MapPin, DollarSign, BarChart3, TrendingUp, Phone, User, Sparkles, Star, GraduationCap, ShieldAlert, Loader2, ExternalLink, Wallet, ShieldCheck } from 'lucide-react';
+import { Building2, Home, Search, Filter, MapPin, DollarSign, BarChart3, TrendingUp, Phone, User, Sparkles, Star, GraduationCap, ShieldAlert, Loader2, ExternalLink, Wallet, ShieldCheck, List, Map as MapIcon } from 'lucide-react';
+import { PropertyMap, type MapPoint } from '@/components/property-map';
+import { cn } from '@/lib/utils';
+
+const toNum = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+// Search results are a cross-platform shape (UnifiedProperty), not a DB
+// Property. Coordinates aren't part of that contract, so pick them up wherever
+// a platform happens to include them and let the map geocode the rest.
+function searchResultToMapPoint(p: any, index: number): MapPoint {
+  const addr = p.address ?? {};
+  const street = typeof addr === 'string' ? addr : addr.streetAddress;
+  const cityLine = typeof addr === 'string' ? '' : [addr.city, addr.state].filter(Boolean).join(', ');
+  const lat = toNum(p.latitude ?? p.lat ?? p.coordinates?.latitude ?? p.coordinates?.lat ?? p.metrics?.latitude);
+  const lng = toNum(p.longitude ?? p.lng ?? p.coordinates?.longitude ?? p.coordinates?.lng ?? p.metrics?.longitude);
+  return {
+    id: String(p.id ?? index),
+    lat,
+    lng,
+    score: toNum(p.score ?? p.investmentScorePercent),
+    price: toNum(p.price),
+    title: street || 'Property',
+    subtitle: [cityLine, addr.zipCode].filter(Boolean).join(' '),
+    beds: toNum(p.bedrooms),
+    baths: toNum(p.bathrooms),
+    sqft: toNum(p.sqft),
+    capRate: toNum(p.capRate),
+    image: Array.isArray(p.images) ? p.images[0] : null,
+    geocodeQuery: [street, addr.city, addr.state, addr.zipCode].filter(Boolean).join(', '),
+  };
+}
 
 const searchFormSchema = z.object({
   platform: z.enum(['zillow', 'loopnet', 'redfin', 'crexi', 'multi']),
@@ -115,6 +149,8 @@ const platformInfo = {
 
 export default function PropertySearchPage() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [resultsView, setResultsView] = useState<'list' | 'map'>('list');
+  const [mapSelectedId, setMapSelectedId] = useState<string | null>(null);
   const [selectedPlatform, setSelectedPlatform] = useState<string>('multi');
   const { toast } = useToast();
 
@@ -586,6 +622,27 @@ export default function PropertySearchPage() {
                         <CardTitle className="flex items-center justify-between">
                           <span>{platformInfo[result.platform as keyof typeof platformInfo]?.name || result.platform} Results</span>
                           <div className="flex items-center space-x-4 text-sm text-slate-600">
+                            <div className="inline-flex rounded-lg border border-border bg-white p-0.5" role="tablist">
+                              {([
+                                { value: 'list', label: 'List', icon: List },
+                                { value: 'map', label: 'Map', icon: MapIcon },
+                              ] as const).map(({ value, label, icon: Icon }) => (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  role="tab"
+                                  aria-selected={resultsView === value}
+                                  onClick={() => setResultsView(value)}
+                                  className={cn(
+                                    'inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                                    resultsView === value ? 'bg-brand-blue text-white' : 'text-slate-600 hover:bg-slate-100',
+                                  )}
+                                >
+                                  <Icon className="h-3.5 w-3.5" />
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
                             <span>Found: {result.totalFound}</span>
                             <span>Scored: {result.properties.length}</span>
                             {result.errors > 0 && (
@@ -595,7 +652,16 @@ export default function PropertySearchPage() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        {result.properties.length > 0 ? (
+                        {result.properties.length > 0 && resultsView === 'map' ? (
+                          <div className="overflow-hidden rounded-xl border border-border">
+                            <PropertyMap
+                              points={result.properties.map(searchResultToMapPoint)}
+                              selectedId={mapSelectedId}
+                              onSelect={setMapSelectedId}
+                              height="560px"
+                            />
+                          </div>
+                        ) : result.properties.length > 0 ? (
                           <div className="grid grid-cols-1 gap-4">
                             {result.properties.map((property, propertyIndex) => (
                               <PropertyCard key={propertyIndex} property={property} platform={result.platform} />

@@ -46,3 +46,22 @@ export function formatROI(roi?: string | null): string | null {
 export function formatNumber(value: number): string {
   return numberFormatter.format(value);
 }
+
+/** Zillow-style home types as stored in properties.home_type. */
+export const HOME_TYPES = [
+  { value: 'SINGLE_FAMILY', label: 'Single family' },
+  { value: 'CONDO', label: 'Condo' },
+  { value: 'MULTI_FAMILY', label: 'Multi-family' },
+  { value: 'TOWNHOUSE', label: 'Townhouse' },
+  { value: 'APARTMENT', label: 'Apartment' },
+  { value: 'MANUFACTURED', label: 'Manufactured' },
+  { value: 'LOT', label: 'Lot / land' },
+] as const;
+
+export function formatHomeType(value: string | null | undefined): string {
+  if (!value) return '';
+  const known = HOME_TYPES.find((t) => t.value === value);
+  if (known) return known.label;
+  const words = value.replace(/[_-]/g, ' ').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}

@@ -1,223 +1,131 @@
-import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import type { Property } from '@shared/schema';
-import { ScoreBadge } from './score-badge';
+import { lazy, Suspense } from "react";
+import { MapPinOff } from "lucide-react";
+import type { Property } from "@shared/schema";
+import { toScore } from "@/lib/score";
+import { cn } from "@/lib/utils";
 
-// Fix for default markers in react-leaflet
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
+/**
+ * Public entry point for maps. The Mapbox implementation lives in
+ * property-map-gl.tsx and is lazy-loaded so mapbox-gl (~200KB gz) only downloads
+ * on screens that actually render a map.
+ */
 
-interface PropertyMapProps {
-  properties: Property[];
-  onPropertyClick?: (property: Property) => void;
-  selectedProperty?: Property | null;
+/** Minimal shape the map needs; adapters below convert app data into it. */
+export interface MapPoint {
+  id: string;
+  /** null when the source has no coordinates (may be geocoded, else skipped). */
+  lat: number | null;
+  lng: number | null;
+  score: number | null;
+  price?: number | null;
+  title: string;
+  subtitle?: string;
+  beds?: number | null;
+  baths?: number | null;
+  sqft?: number | null;
+  capRate?: number | null;
+  cashFlow?: number | null;
+  image?: string | null;
+  /** Used only for the geocoding fallback when lat/lng are missing. */
+  geocodeQuery?: string;
+}
+
+export interface PropertyMapProps {
+  points: MapPoint[];
+  selectedId?: string | null;
+  hoveredId?: string | null;
+  /** Marker clicked: select it (the map opens its popup). */
+  onSelect?: (id: string | null) => void;
+  /** "View details" in the popup. */
+  onViewDetails?: (id: string) => void;
   height?: string;
+  className?: string;
+  /** false renders a static, non-interactive map (teasers, mini-maps). */
+  interactive?: boolean;
+  showLegend?: boolean;
+  styleVariant?: "light" | "streets";
+  /** Single-point maps zoom to this level instead of fitting bounds. */
+  singlePointZoom?: number;
+  /** Slow fly-in on first load (landing teaser). */
+  introAnimation?: boolean;
 }
 
-interface PropertyWithCoords extends Property {
-  lat?: number;
-  lng?: number;
+const num = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+export function propertyToMapPoint(p: Property): MapPoint {
+  const cityLine = [p.addressCity, p.addressState].filter(Boolean).join(", ");
+  return {
+    id: p.zpid,
+    lat: num(p.latitude),
+    lng: num(p.longitude),
+    score: p.investmentScorePercent != null ? toScore(p.investmentScorePercent) : null,
+    price: num(p.price),
+    title: p.addressStreet || p.address || p.fullAddress || "Property",
+    subtitle: [cityLine, p.addressZip].filter(Boolean).join(" "),
+    beds: num(p.numBeds),
+    baths: num(p.numBaths),
+    sqft: num(p.sizeSqFt),
+    capRate: num(p.capRatePercent),
+    cashFlow: num(p.monthlyCashFlow),
+    image: p.imgMain,
+    geocodeQuery: [p.address, p.addressCity, p.addressState].filter(Boolean).join(", "),
+  };
 }
 
-export function PropertyMap({
-  properties,
-  onPropertyClick,
-  selectedProperty,
-  height = "400px"
-}: PropertyMapProps) {
-  const [propertiesWithCoords, setPropertiesWithCoords] = useState<PropertyWithCoords[]>([]);
-  const [loading, setLoading] = useState(true);
+export function getMapboxToken(): string | null {
+  const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string | undefined;
+  // Treat the .env.example placeholder as unset.
+  if (!token || token.includes("your-")) return null;
+  return token;
+}
 
-  // Simple geocoding fallback for properties missing lat/lng.
-  const geocodeAddress = async (address: string, city: string, state: string): Promise<{ lat: number; lng: number } | null> => {
-    try {
-      const fullAddress = `${address}, ${city}, ${state}`;
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`
-      );
-      const data = await response.json();
+const MapboxMap = lazy(() => import("./property-map-gl"));
 
-      if (data && data.length > 0) {
-        return {
-          lat: parseFloat(data[0].lat),
-          lng: parseFloat(data[0].lon)
-        };
-      }
-      return null;
-    } catch (error) {
-      console.error('Geocoding error:', error);
-      return null;
-    }
-  };
-
-  useEffect(() => {
-    const resolveProperties = async () => {
-      setLoading(true);
-      const resolved: PropertyWithCoords[] = [];
-
-      for (const property of properties.slice(0, 20)) { // Limit to first 20 properties
-        // Prefer stored coordinates (numeric columns arrive as strings).
-        const storedLat = property.latitude != null ? Number(property.latitude) : NaN;
-        const storedLng = property.longitude != null ? Number(property.longitude) : NaN;
-
-        if (!isNaN(storedLat) && !isNaN(storedLng)) {
-          resolved.push({ ...property, lat: storedLat, lng: storedLng });
-          continue;
-        }
-
-        // Fall back to geocoding when coordinates are missing.
-        const coords = await geocodeAddress(
-          property.address ?? '',
-          property.addressCity ?? '',
-          property.addressState ?? ''
-        );
-        resolved.push({
-          ...property,
-          lat: coords?.lat,
-          lng: coords?.lng
-        });
-
-        // Small delay to be respectful to the geocoding service
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      setPropertiesWithCoords(resolved.filter(p => p.lat != null && p.lng != null));
-      setLoading(false);
-    };
-
-    if (properties.length > 0) {
-      resolveProperties();
-    } else {
-      setPropertiesWithCoords([]);
-      setLoading(false);
-    }
-  }, [properties]);
-
-  // Calculate center of map based on properties
-  const getMapCenter = (): [number, number] => {
-    if (propertiesWithCoords.length === 0) {
-      return [39.8283, -98.5795]; // Center of US
-    }
-
-    const validCoords = propertiesWithCoords.filter(p => p.lat != null && p.lng != null);
-    if (validCoords.length === 0) {
-      return [39.8283, -98.5795];
-    }
-
-    const avgLat = validCoords.reduce((sum, p) => sum + p.lat!, 0) / validCoords.length;
-    const avgLng = validCoords.reduce((sum, p) => sum + p.lng!, 0) / validCoords.length;
-
-    return [avgLat, avgLng];
-  };
-
-  // Create custom icon for selected property
-  const createSelectedIcon = () => {
-    return L.divIcon({
-      className: 'custom-marker selected-marker',
-      html: `<div style="background-color: #ef4444; width: 25px; height: 25px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
-      iconSize: [25, 25],
-      iconAnchor: [12, 12]
-    });
-  };
-
-  // Create custom icon based on score
-  const createScoreIcon = (score: number) => {
-    const getColor = (score: number) => {
-      if (score >= 85) return "#10b981"; // Green
-      if (score >= 75) return "#f59e0b"; // Yellow
-      if (score >= 60) return "#f97316"; // Orange
-      return "#ef4444"; // Red
-    };
-
-    return L.divIcon({
-      className: 'custom-marker score-marker',
-      html: `<div style="background-color: ${getColor(score)}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 10px;">${score}</div>`,
-      iconSize: [20, 20],
-      iconAnchor: [10, 10]
-    });
-  };
-
-  if (loading) {
-    return (
-      <div
-        className="flex items-center justify-center bg-gray-100 rounded-lg"
-        style={{ height }}
-      >
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-          <p className="text-sm text-gray-600">Loading map...</p>
-        </div>
-      </div>
-    );
-  }
-
+export function MapLoading({ height, className }: { height: string; className?: string }) {
   return (
-    <div className="rounded-lg overflow-hidden border border-gray-200">
-      <MapContainer
-        center={getMapCenter()}
-        zoom={10}
-        style={{ height, width: '100%' }}
-        className="z-0"
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-
-        {propertiesWithCoords.map((property) => {
-          if (property.lat == null || property.lng == null) return null;
-
-          const isSelected = selectedProperty?.zpid === property.zpid;
-          const score = Math.round(Number(property.investmentScorePercent ?? 0));
-          const price = property.price != null ? Number(property.price) : null;
-          const sqft = property.sizeSqFt != null ? Number(property.sizeSqFt) : null;
-
-          return (
-            <Marker
-              key={property.zpid}
-              position={[property.lat, property.lng]}
-              icon={isSelected ? createSelectedIcon() : createScoreIcon(score)}
-              eventHandlers={{
-                click: () => onPropertyClick?.(property)
-              }}
-            >
-              <Popup>
-                <div className="p-2 min-w-[200px]">
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="font-semibold text-sm">{property.address}</h3>
-                    <ScoreBadge investmentScorePercent={score} className="ml-2" />
-                  </div>
-                  <p className="text-xs text-gray-600 mb-1">
-                    {property.addressCity}, {property.addressState}
-                  </p>
-                  <p className="text-sm font-medium text-green-600 mb-2">
-                    ${price != null ? price.toLocaleString() : '-'}
-                  </p>
-                  <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
-                    <span>{property.numBeds} bed</span>
-                    <span>•</span>
-                    <span>{property.numBaths} bath</span>
-                    <span>•</span>
-                    <span>{sqft != null ? sqft.toLocaleString() : '-'} sqft</span>
-                  </div>
-                  <button
-                    onClick={() => onPropertyClick?.(property)}
-                    className="w-full bg-blue-600 text-white text-xs py-1 px-2 rounded hover:bg-blue-700 transition-colors"
-                  >
-                    View Details
-                  </button>
-                </div>
-              </Popup>
-            </Marker>
-          );
-        })}
-      </MapContainer>
+    <div
+      className={cn("relative flex items-center justify-center overflow-hidden bg-slate-100", className)}
+      style={{ height }}
+    >
+      <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-slate-100 via-slate-50 to-brand-light/60" />
+      <div className="relative flex items-center gap-2 text-sm font-medium text-brand-gray">
+        <span className="h-2 w-2 animate-ping rounded-full bg-brand-blue" />
+        Loading map…
+      </div>
     </div>
+  );
+}
+
+function MapUnavailable({ height, className }: { height: string; className?: string }) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-brand-light/50 px-6 text-center",
+        className,
+      )}
+      style={{ height }}
+    >
+      <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-white text-brand-blue shadow-sm">
+        <MapPinOff className="h-5 w-5" />
+      </div>
+      <p className="text-sm font-semibold text-brand-navy">Map unavailable</p>
+      <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+        Set <code className="rounded bg-white px-1 py-0.5">VITE_MAPBOX_ACCESS_TOKEN</code> to enable interactive maps.
+      </p>
+    </div>
+  );
+}
+
+export function PropertyMap(props: PropertyMapProps) {
+  const height = props.height ?? "400px";
+  if (!getMapboxToken()) return <MapUnavailable height={height} className={props.className} />;
+  return (
+    <Suspense fallback={<MapLoading height={height} className={props.className} />}>
+      <MapboxMap {...props} height={height} />
+    </Suspense>
   );
 }

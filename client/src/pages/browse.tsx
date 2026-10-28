@@ -1,361 +1,488 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PropertyCard } from "@/components/property-card";
 import { PropertyDrawer } from "@/components/property-drawer";
-import { PropertyMap } from "@/components/property-map";
+import { PropertyMap, propertyToMapPoint } from "@/components/property-map";
 import { PropertyTable } from "@/components/property-table";
-import { useQuery } from "@tanstack/react-query";
+import { ScoreBadge } from "@/components/score-badge";
+import { EmptyState, ErrorState, PageHeader, PropertyGridSkeleton, PropertyImageFallback } from "@/components/states";
+import { Skeleton } from "@/components/ui/skeleton";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
-import { Search, Grid3X3, Map, Table2, Camera } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Search, Grid3X3, Map as MapIcon, Table2, Lock, X, List } from "lucide-react";
 import type { Property, PropertySearch } from "@shared/schema";
+import { HOME_TYPES, formatHomeType, formatPrice } from "@/lib/format";
+import { cn } from "@/lib/utils";
+
+type ViewMode = "grid" | "map" | "table";
+
+const PAGE_SIZE = 20;
+// The API caps a single page at 100 rows (propertySearchSchema).
+const MAX_LIMIT = 100;
+const DEFAULT_SEARCH: PropertySearch = { sortBy: "score-desc", limit: PAGE_SIZE };
+
+const PRICE_RANGES = [
+  { value: "0-300000", label: "Under $300k" },
+  { value: "300000-500000", label: "$300k – $500k" },
+  { value: "500000-750000", label: "$500k – $750k" },
+  { value: "750000-1000000", label: "$750k – $1M" },
+  { value: "1000000-", label: "$1M+" },
+];
+
+const SCORE_RANGES = [
+  { value: "80-100", label: "Excellent (80+)" },
+  { value: "60-79", label: "Good (60–79)" },
+  { value: "0-59", label: "Fair (under 60)" },
+];
+
+const VIEW_OPTIONS: { value: ViewMode; label: string; icon: typeof Grid3X3 }[] = [
+  { value: "grid", label: "Grid", icon: Grid3X3 },
+  { value: "table", label: "Table", icon: Table2 },
+  { value: "map", label: "Map", icon: MapIcon },
+];
+
+function useDebounced<T>(value: T, delay = 350): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
+/** Compact row for the list beside the map. */
+function MapListItem({
+  property,
+  active,
+  onSelect,
+  onHover,
+  onOpen,
+}: {
+  property: Property;
+  active: boolean;
+  onSelect: () => void;
+  onHover: (hovering: boolean) => void;
+  onOpen: () => void;
+}) {
+  const [imgError, setImgError] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (active) ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [active]);
+
+  return (
+    <div
+      ref={ref}
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onDoubleClick={onOpen}
+      onKeyDown={(e) => e.key === "Enter" && onOpen()}
+      onMouseEnter={() => onHover(true)}
+      onMouseLeave={() => onHover(false)}
+      className={cn(
+        "flex cursor-pointer gap-3 rounded-xl border bg-card p-2.5 transition-all",
+        active
+          ? "border-brand-blue ring-2 ring-brand-blue/20 shadow-md"
+          : "border-border hover:border-brand-blue/40 hover:shadow-sm",
+      )}
+    >
+      <div className="h-20 w-24 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+        {property.imgMain && !imgError ? (
+          <img
+            src={property.imgMain}
+            alt={property.address ?? ""}
+            loading="lazy"
+            className="h-full w-full object-cover"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <PropertyImageFallback compact />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-base font-bold tabular-nums text-brand-navy">{formatPrice(property.price ?? 0)}</p>
+          <ScoreBadge investmentScorePercent={property.investmentScorePercent} size="sm" />
+        </div>
+        <p className="truncate text-sm font-medium text-foreground">{property.address}</p>
+        <p className="truncate text-xs text-muted-foreground">
+          {[
+            property.numBeds != null && `${property.numBeds} bd`,
+            property.numBaths != null && `${Number(property.numBaths)} ba`,
+            formatHomeType(property.homeType),
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          className="mt-1 text-xs font-semibold text-brand-blue hover:underline"
+        >
+          View details
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function Browse() {
   const { hasActiveSubscription } = useAuth();
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'map' | 'table'>('grid');
-  
-  const [searchParams, setSearchParams] = useState<PropertySearch>({
-    sortBy: 'score-desc',
-    limit: 20,
-  });
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [mapSelectedId, setMapSelectedId] = useState<string | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [mobileMapList, setMobileMapList] = useState(false);
 
-  const { data: properties = [], isLoading, refetch } = useQuery<Property[]>({
-    queryKey: ['/api/properties', searchParams],
+  const [searchParams, setSearchParams] = useState<PropertySearch>(DEFAULT_SEARCH);
+  const [queryInput, setQueryInput] = useState("");
+  const debouncedQuery = useDebounced(queryInput.trim());
+
+  const effectiveParams = useMemo<PropertySearch>(
+    () => ({ ...searchParams, query: debouncedQuery || undefined }),
+    [searchParams, debouncedQuery],
+  );
+
+  const {
+    data: properties = [],
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+  } = useQuery<Property[]>({
+    queryKey: ["/api/properties", effectiveParams],
     enabled: hasActiveSubscription,
+    placeholderData: keepPreviousData,
   });
 
-  const handlePropertyClick = (property: Property) => {
+  const points = useMemo(() => properties.map(propertyToMapPoint), [properties]);
+  const byId = useMemo(() => new Map(properties.map((p) => [p.zpid, p])), [properties]);
+
+  const openProperty = (property: Property) => {
     setSelectedProperty(property);
     setDrawerOpen(true);
   };
 
-  const handleSearch = () => {
-    refetch();
+  const updateSearchParam = <K extends keyof PropertySearch>(key: K, value: PropertySearch[K]) => {
+    // Any filter change resets paging; "limit" itself overrides the reset.
+    setSearchParams((prev) => ({ ...prev, limit: PAGE_SIZE, [key]: value }));
   };
 
-  const handleClearFilters = () => {
-    setSearchParams({
-      sortBy: 'score-desc',
-      limit: 20,
+  const setRange = (minKey: "priceMin" | "scoreMin", maxKey: "priceMax" | "scoreMax", value: string) => {
+    setSearchParams((prev) => {
+      if (value === "any") return { ...prev, [minKey]: undefined, [maxKey]: undefined, limit: PAGE_SIZE };
+      const [min, max] = value.split("-");
+      return {
+        ...prev,
+        [minKey]: min ? Number(min) : undefined,
+        [maxKey]: max ? Number(max) : undefined,
+        limit: PAGE_SIZE,
+      };
     });
   };
 
-  const updateSearchParam = (key: keyof PropertySearch, value: any) => {
-    setSearchParams(prev => ({ ...prev, [key]: value }));
+  const rangeValue = (min?: number, max?: number) =>
+    min === undefined && max === undefined ? "any" : `${min ?? ""}-${max ?? ""}`;
+
+  const hasFilters =
+    Boolean(debouncedQuery) ||
+    searchParams.priceMin !== undefined ||
+    searchParams.priceMax !== undefined ||
+    searchParams.scoreMin !== undefined ||
+    searchParams.scoreMax !== undefined ||
+    Boolean(searchParams.homeType);
+
+  const handleClearFilters = () => {
+    setQueryInput("");
+    setSearchParams(DEFAULT_SEARCH);
   };
+
+  const limit = searchParams.limit ?? PAGE_SIZE;
+  const canLoadMore = properties.length >= limit && limit < MAX_LIMIT;
 
   if (!hasActiveSubscription) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto p-8">
-          <h1 className="text-2xl font-bold text-slate-800 mb-4">
-            Subscription Required
-          </h1>
-          <p className="text-slate-600 mb-6">
-            You need an active subscription to browse properties. 
-            Start your free trial to access our premium listings.
-          </p>
-          <Button onClick={() => window.location.href = '/subscribe'}>
-            Start Free Trial
-          </Button>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+        <EmptyState
+          icon={Lock}
+          className="max-w-md border-solid shadow-sm"
+          title="Unlock the full property feed"
+          description="Browse every scored listing, filter by score, price and type, and explore deals on the map with an active subscription."
+          action={
+            <Button variant="cta" asChild>
+              <Link href="/subscribe">Start free trial</Link>
+            </Button>
+          }
+        />
       </div>
     );
   }
 
+  const selectClass = "h-10 bg-white";
+
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Hero Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-slate-800 mb-4">Browse Properties</h1>
-          <p className="text-xl text-slate-600 max-w-2xl mx-auto">Find your next investment opportunity with authentic Zillow photos and comprehensive property data</p>
-          <div className="flex items-center justify-center gap-2 mt-4">
-            <Badge className="bg-blue-100 text-blue-800 border border-blue-200">
-              <Camera className="h-3 w-3 mr-1" />
-              Authentic Zillow Photos
-            </Badge>
-            <Badge className="bg-green-100 text-green-800 border border-green-200">
-              Multi-Platform Data
-            </Badge>
+      <div className={cn("mx-auto px-4 py-8 sm:px-6 lg:px-8", viewMode === "map" ? "max-w-[1600px]" : "max-w-7xl")}>
+        <PageHeader
+          title="Browse properties"
+          description="Every listing scored and underwritten. Filter to your buy box, then dig into the numbers."
+          actions={
+            <div className="inline-flex rounded-lg border border-border bg-white p-1 shadow-sm" role="tablist">
+              {VIEW_OPTIONS.map(({ value, label, icon: Icon }) => (
+                <button
+                  key={value}
+                  role="tab"
+                  aria-selected={viewMode === value}
+                  onClick={() => setViewMode(value)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                    viewMode === value
+                      ? "bg-brand-blue text-white shadow-sm"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-foreground",
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          }
+        />
+
+        {/* Filters */}
+        <div className="mb-6 rounded-xl border border-border bg-white p-4 shadow-sm">
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))]">
+            <div className="relative md:col-span-2 lg:col-span-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                aria-label="Search location"
+                placeholder="Address, city, or ZIP"
+                className="h-10 bg-white pl-9"
+                value={queryInput}
+                onChange={(e) => setQueryInput(e.target.value)}
+              />
+            </div>
+
+            <Select
+              value={rangeValue(searchParams.priceMin, searchParams.priceMax)}
+              onValueChange={(v) => setRange("priceMin", "priceMax", v)}
+            >
+              <SelectTrigger className={selectClass} aria-label="Price range">
+                <SelectValue placeholder="Any price" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">Any price</SelectItem>
+                {PRICE_RANGES.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>
+                    {r.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={rangeValue(searchParams.scoreMin, searchParams.scoreMax)}
+              onValueChange={(v) => setRange("scoreMin", "scoreMax", v)}
+            >
+              <SelectTrigger className={selectClass} aria-label="Investment score">
+                <SelectValue placeholder="Any score" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">Any score</SelectItem>
+                {SCORE_RANGES.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>
+                    {r.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={searchParams.homeType ?? "any"}
+              onValueChange={(v) => updateSearchParam("homeType", v === "any" ? undefined : v)}
+            >
+              <SelectTrigger className={selectClass} aria-label="Property type">
+                <SelectValue placeholder="Any type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">Any type</SelectItem>
+                {HOME_TYPES.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={searchParams.sortBy ?? "score-desc"}
+              onValueChange={(v) => updateSearchParam("sortBy", v as PropertySearch["sortBy"])}
+            >
+              <SelectTrigger className={selectClass} aria-label="Sort by">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="score-desc">Highest score</SelectItem>
+                <SelectItem value="price-asc">Lowest price</SelectItem>
+                <SelectItem value="price-desc">Highest price</SelectItem>
+                <SelectItem value="newest">Newest</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="mt-3 flex min-h-[1.75rem] items-center justify-between text-sm text-muted-foreground">
+            <span className="flex items-center gap-2">
+              {isLoading ? (
+                "Loading listings…"
+              ) : (
+                <>
+                  <span className="font-semibold text-foreground tabular-nums">{properties.length}</span>
+                  {properties.length === 1 ? "property" : "properties"}
+                  {hasFilters && " match your filters"}
+                </>
+              )}
+              {isFetching && !isLoading && (
+                <span className="h-1.5 w-1.5 animate-ping rounded-full bg-brand-blue" aria-label="Updating" />
+              )}
+            </span>
+            {hasFilters && (
+              <Button variant="ghost" size="sm" onClick={handleClearFilters} className="h-7 text-muted-foreground">
+                <X className="mr-1 h-3.5 w-3.5" />
+                Clear filters
+              </Button>
+            )}
           </div>
         </div>
 
-        {/* Enhanced Search Section */}
-        <div className="bg-white rounded-2xl shadow-xl border border-slate-100 mb-8 overflow-hidden">
-          {/* Search Header */}
-          <div className="bg-gradient-to-r from-brand-blue to-brand-navy px-8 py-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-white rounded-lg">
-                <Search className="h-6 w-6 text-blue-600" />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-white">Property Search & Filters</h2>
-                <p className="text-blue-100 text-sm">Use advanced filters to find properties that match your investment criteria</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Search Content */}
-          <div className="p-8">
-            <div className="grid md:grid-cols-3 gap-6 mb-6">
-              <div className="md:col-span-2">
-                <Label htmlFor="search" className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Search Location</Label>
-                <div className="relative mt-3">
-                  <Search className="absolute left-4 top-4 h-5 w-5 text-slate-400" />
-                  <Input
-                    id="search"
-                    placeholder="Enter address, city, or ZIP code"
-                    className="pl-12 h-12 text-lg border-2 border-slate-200 focus:border-blue-600 rounded-xl"
-                    value={searchParams.query || ''}
-                    onChange={(e) => updateSearchParam('query', e.target.value)}
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <Label className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Price Range</Label>
-                <Select 
-                  value={searchParams.priceMin && searchParams.priceMax 
-                    ? `${searchParams.priceMin}-${searchParams.priceMax}` 
-                    : 'any'
-                  }
-                  onValueChange={(value) => {
-                    if (value === 'any' || value === '') {
-                      updateSearchParam('priceMin', undefined);
-                      updateSearchParam('priceMax', undefined);
-                    } else {
-                      const [min, max] = value.split('-').map(Number);
-                      updateSearchParam('priceMin', min || undefined);
-                      updateSearchParam('priceMax', max === undefined ? undefined : max);
-                    }
-                  }}
-                >
-                  <SelectTrigger className="mt-3 h-12 border-2 border-slate-200 focus:border-blue-600 rounded-xl text-lg">
-                    <SelectValue placeholder="Any Price" />
-                  </SelectTrigger>
-                  <SelectContent className="border-2 border-slate-300 shadow-xl">
-                    <div className="bg-blue-600 text-white px-3 py-2 text-sm font-semibold border-b border-slate-200">
-                      Price Range
-                    </div>
-                    <SelectItem value="any" className="hover:bg-slate-100">Any Price</SelectItem>
-                    <SelectItem value="0-300000" className="hover:bg-slate-100">Under $300k</SelectItem>
-                    <SelectItem value="300000-500000" className="hover:bg-slate-100">$300k - $500k</SelectItem>
-                    <SelectItem value="500000-750000" className="hover:bg-slate-100">$500k - $750k</SelectItem>
-                    <SelectItem value="750000-1000000" className="hover:bg-slate-100">$750k - $1M</SelectItem>
-                    <SelectItem value="1000000-" className="hover:bg-slate-100">$1M+</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div>
-                <Label className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Score Range</Label>
-                <Select 
-                  value={searchParams.scoreMin && searchParams.scoreMax 
-                    ? `${searchParams.scoreMin}-${searchParams.scoreMax}` 
-                    : 'any'
-                  }
-                  onValueChange={(value) => {
-                    if (value === 'any' || value === '') {
-                      updateSearchParam('scoreMin', undefined);
-                      updateSearchParam('scoreMax', undefined);
-                    } else {
-                      const [min, max] = value.split('-').map(Number);
-                      updateSearchParam('scoreMin', min);
-                      updateSearchParam('scoreMax', max);
-                    }
-                  }}
-                >
-                  <SelectTrigger className="mt-3 h-12 border-2 border-slate-200 focus:border-blue-600 rounded-xl text-lg">
-                    <SelectValue placeholder="Any Score" />
-                  </SelectTrigger>
-                  <SelectContent className="border-2 border-slate-300 shadow-xl">
-                    <div className="bg-brand-blue text-white px-3 py-2 text-sm font-semibold border-b border-slate-200">
-                      Investment Score
-                    </div>
-                    <SelectItem value="any" className="hover:bg-slate-100">Any Score</SelectItem>
-                    <SelectItem value="80-100" className="hover:bg-slate-100">Excellent (80-100)</SelectItem>
-                    <SelectItem value="60-79" className="hover:bg-slate-100">Good (60-79)</SelectItem>
-                    <SelectItem value="0-59" className="hover:bg-slate-100">Fair (Under 60)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          
-            <div className="flex flex-wrap gap-4 items-center justify-between border-t border-slate-200 pt-6">
-              <div className="flex flex-wrap gap-4 items-center">
-                <div className="flex items-center gap-3">
-                  <Label className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Sort by:</Label>
-                  <Select 
-                    value={searchParams.sortBy || 'score-desc'}
-                    onValueChange={(value) => updateSearchParam('sortBy', value)}
-                  >
-                    <SelectTrigger className="w-48 h-10 border-2 border-slate-200 focus:border-blue-600 rounded-lg">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="border-2 border-slate-300 shadow-xl">
-                      <div className="bg-blue-600 text-white px-3 py-2 text-sm font-semibold border-b border-slate-200">
-                        Sort Options
-                      </div>
-                      <SelectItem value="score-desc" className="hover:bg-slate-100">Highest Score</SelectItem>
-                      <SelectItem value="price-asc" className="hover:bg-slate-100">Lowest Price</SelectItem>
-                      <SelectItem value="newest" className="hover:bg-slate-100">Newest</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button 
-                  onClick={handleSearch}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-semibold"
-                >
-                  Apply Filters
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={handleClearFilters}
-                  className="border-2 border-slate-300 hover:border-blue-600 px-6 py-3 rounded-xl font-semibold"
-                >
-                  Clear All
-                </Button>
-              </div>
-
-              {/* View Toggle */}
-              <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1">
-                <Button
-                  variant={viewMode === 'grid' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setViewMode('grid')}
-                  className={`flex items-center gap-2 rounded-lg ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'hover:bg-slate-200'}`}
-                >
-                  <Grid3X3 className="h-4 w-4" />
-                  Grid
-                </Button>
-                <Button
-                  variant={viewMode === 'table' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setViewMode('table')}
-                  className={`flex items-center gap-2 rounded-lg ${viewMode === 'table' ? 'bg-blue-600 text-white' : 'hover:bg-slate-200'}`}
-                >
-                  <Table2 className="h-4 w-4" />
-                  Table
-                </Button>
-                <Button
-                  variant={viewMode === 'map' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setViewMode('map')}
-                  className={`flex items-center gap-2 rounded-lg ${viewMode === 'map' ? 'bg-blue-600 text-white' : 'hover:bg-slate-200'}`}
-                >
-                  <Map className="h-4 w-4" />
-                  Map
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Properties Display - Grid, Table, or Map */}
-        {isLoading ? (
-          viewMode === 'grid' ? (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                  <div className="w-full h-48 bg-slate-200 animate-pulse" />
-                  <div className="p-4 space-y-2">
-                    <div className="h-4 bg-slate-200 rounded animate-pulse" />
-                    <div className="h-3 bg-slate-200 rounded animate-pulse w-3/4" />
-                    <div className="h-4 bg-slate-200 rounded animate-pulse w-1/2" />
+        {/* Results */}
+        {isError ? (
+          <ErrorState onRetry={() => refetch()} description="We couldn't load listings. Try again in a moment." />
+        ) : isLoading ? (
+          viewMode === "map" ? (
+            <Skeleton className="h-[640px] w-full rounded-xl" />
+          ) : viewMode === "table" ? (
+            <div className="space-y-3 rounded-xl border border-border bg-white p-6 shadow-sm">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-4">
+                  <Skeleton className="h-12 w-16" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-3 w-1/3" />
                   </div>
+                  <Skeleton className="h-6 w-20" />
                 </div>
               ))}
             </div>
-          ) : viewMode === 'table' ? (
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="p-8 space-y-4">
-                {[...Array(10)].map((_, i) => (
-                  <div key={i} className="flex items-center space-x-4">
-                    <div className="w-16 h-12 bg-slate-200 rounded animate-pulse" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-4 bg-slate-200 rounded animate-pulse w-1/2" />
-                      <div className="h-3 bg-slate-200 rounded animate-pulse w-1/3" />
-                    </div>
-                    <div className="w-20 h-6 bg-slate-200 rounded animate-pulse" />
-                    <div className="w-24 h-4 bg-slate-200 rounded animate-pulse" />
-                  </div>
-                ))}
-              </div>
-            </div>
           ) : (
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="w-full h-96 bg-slate-200 animate-pulse flex items-center justify-center">
-                <p className="text-slate-500">Loading map...</p>
-              </div>
-            </div>
+            <PropertyGridSkeleton />
           )
-        ) : properties.length > 0 ? (
+        ) : properties.length === 0 ? (
+          <EmptyState
+            title="No properties match these filters"
+            description="Try widening the price or score range, or clearing the property type."
+            action={
+              hasFilters && (
+                <Button variant="outline" onClick={handleClearFilters}>
+                  Clear filters
+                </Button>
+              )
+            }
+          />
+        ) : (
           <>
-            {viewMode === 'grid' && (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {viewMode === "grid" && (
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
                 {properties.map((property) => (
-                  <PropertyCard
-                    key={property.zpid}
-                    property={property}
-                    onClick={() => handlePropertyClick(property)}
-                  />
+                  <PropertyCard key={property.zpid} property={property} onClick={() => openProperty(property)} />
                 ))}
               </div>
             )}
-            
-            {viewMode === 'table' && (
-              <PropertyTable
-                properties={properties}
-                onPropertyClick={handlePropertyClick}
-              />
+
+            {viewMode === "table" && <PropertyTable properties={properties} onPropertyClick={openProperty} />}
+
+            {viewMode === "map" && (
+              <>
+                {/* Mobile: toggle between map and list */}
+                <div className="mb-3 flex justify-end lg:hidden">
+                  <Button variant="outline" size="sm" onClick={() => setMobileMapList((v) => !v)}>
+                    {mobileMapList ? <MapIcon className="mr-1.5 h-4 w-4" /> : <List className="mr-1.5 h-4 w-4" />}
+                    {mobileMapList ? "Show map" : "Show list"}
+                  </Button>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-[minmax(340px,2fr)_minmax(0,3fr)]">
+                  <div
+                    className={cn(
+                      "space-y-2.5 lg:block lg:h-[calc(100vh-15rem)] lg:min-h-[560px] lg:overflow-y-auto lg:pr-1",
+                      mobileMapList ? "block" : "hidden",
+                    )}
+                  >
+                    {properties.map((property) => (
+                      <MapListItem
+                        key={property.zpid}
+                        property={property}
+                        active={mapSelectedId === property.zpid}
+                        onSelect={() => setMapSelectedId(property.zpid)}
+                        onHover={(h) => setHoveredId(h ? property.zpid : null)}
+                        onOpen={() => openProperty(property)}
+                      />
+                    ))}
+                    {canLoadMore && (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => updateSearchParam("limit", Math.min(limit + PAGE_SIZE, MAX_LIMIT))}
+                      >
+                        Load more
+                      </Button>
+                    )}
+                  </div>
+                  <div
+                    className={cn(
+                      "overflow-hidden rounded-xl border border-border bg-white shadow-sm lg:sticky lg:top-4 lg:block",
+                      mobileMapList ? "hidden" : "block",
+                    )}
+                  >
+                    <PropertyMap
+                      points={points}
+                      selectedId={mapSelectedId}
+                      hoveredId={hoveredId}
+                      onSelect={setMapSelectedId}
+                      onViewDetails={(id) => {
+                        const p = byId.get(id);
+                        if (p) openProperty(p);
+                      }}
+                      height="calc(100vh - 15rem)"
+                      className="min-h-[560px]"
+                    />
+                  </div>
+                </div>
+              </>
             )}
-            
-            {viewMode === 'map' && (
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <PropertyMap
-                  properties={properties}
-                  onPropertyClick={handlePropertyClick}
-                  selectedProperty={selectedProperty}
-                  height="600px"
-                />
-              </div>
-            )}
-            
-            {(viewMode === 'grid' || viewMode === 'table') && properties.length >= (searchParams.limit || 20) && (
-              <div className="text-center mt-8">
-                <Button 
+
+            {viewMode !== "map" && canLoadMore && (
+              <div className="mt-8 text-center">
+                <Button
                   variant="outline"
-                  onClick={() => {
-                    updateSearchParam('limit', (searchParams.limit || 20) + 20);
-                    handleSearch();
-                  }}
+                  onClick={() => updateSearchParam("limit", Math.min(limit + PAGE_SIZE, MAX_LIMIT))}
                 >
-                  Load More Properties
+                  Load more properties
                 </Button>
               </div>
             )}
           </>
-        ) : (
-          <div className="text-center py-12">
-            <p className="text-slate-600 text-lg mb-4">No properties found matching your criteria</p>
-            <Button variant="outline" onClick={handleClearFilters}>
-              Clear Filters
-            </Button>
-          </div>
         )}
       </div>
 
-      <PropertyDrawer 
-        property={selectedProperty}
-        open={drawerOpen}
-        onOpenChange={setDrawerOpen}
-      />
+      <PropertyDrawer property={selectedProperty} open={drawerOpen} onOpenChange={setDrawerOpen} />
     </div>
   );
 }

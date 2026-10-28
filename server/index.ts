@@ -1,5 +1,7 @@
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
+import helmet from "helmet";
+import cors from "cors";
 import { createServer } from "http";
 import { WebSocketServer } from "ws";
 import { registerRoutes } from "./routes/index";
@@ -7,12 +9,76 @@ import { serveStatic, log } from "./static";
 import { consoleLogger } from "./lib/console-logger.js";
 
 const app = express();
+const isProduction = process.env.NODE_ENV === "production";
+
+// Security headers. The CSP only applies in production: Vite's dev server relies
+// on inline scripts and an HMR websocket that a strict policy would block.
+const supabaseOrigin = (() => {
+  try {
+    const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    return url ? new URL(url).origin : null;
+  } catch {
+    return null;
+  }
+})();
+const supabaseSources = supabaseOrigin
+  ? [supabaseOrigin, supabaseOrigin.replace(/^https:/, "wss:")]
+  : [];
+app.use(
+  helmet({
+    contentSecurityPolicy: isProduction
+      ? {
+          directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "https://js.stripe.com", "https://api.mapbox.com"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://api.mapbox.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+            imgSrc: ["'self'", "data:", "blob:", "https:"],
+            connectSrc: [
+              "'self'",
+              "https://api.stripe.com",
+              "https://api.mapbox.com",
+              "https://events.mapbox.com",
+              "https://*.tiles.mapbox.com",
+              "https://nominatim.openstreetmap.org",
+              ...supabaseSources,
+            ],
+            frameSrc: ["https://js.stripe.com", "https://hooks.stripe.com"],
+            workerSrc: ["'self'", "blob:"],
+            childSrc: ["blob:"],
+            objectSrc: ["'none'"],
+          },
+        }
+      : false,
+    // Listing photos come from third-party CDNs that don't send CORP headers.
+    crossOriginEmbedderPolicy: false,
+  }),
+);
+
+// CORS: same-origin by default. Set ALLOWED_ORIGINS (comma-separated) to let other
+// origins (e.g. a white-label domain or API consumers in the browser) call /api.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+app.use(
+  "/api",
+  cors({
+    origin: (origin, callback) => {
+      // Same-origin and non-browser requests send no Origin header.
+      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(null, false);
+    },
+    credentials: true,
+  }),
+);
+
 // Stripe webhooks need the raw request body for signature verification, so the
 // JSON parser must NOT consume it. Skip it for the webhook path; the route itself
 // applies express.raw() (see server/webhooks/stripe.ts).
 const STRIPE_WEBHOOK_PATH = "/webhook/stripe";
 app.use((req, res, next) => {
-  if (req.originalUrl === STRIPE_WEBHOOK_PATH) return next();
+  if (req.path === STRIPE_WEBHOOK_PATH) return next();
   return express.json()(req, res, next);
 });
 app.use(express.urlencoded({ extended: false }));
