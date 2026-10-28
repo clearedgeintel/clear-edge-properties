@@ -16,6 +16,8 @@ export interface RedfinSearchRequest {
 
 export interface RedfinProperty {
   id: string;
+  latitude?: number;
+  longitude?: number;
   address: {
     streetAddress: string;
     city: string;
@@ -210,8 +212,12 @@ export class RedfinApiService {
       ? property.photos.items
       : this.parseImages(property.images || []);
 
+    const latLong = this.rfVal(property.latLong) || {};
+
     return {
       id: (property.listingId ?? property.propertyId ?? '').toString(),
+      latitude: this.parseNumber(latLong.latitude ?? property.latitude),
+      longitude: this.parseNumber(latLong.longitude ?? property.longitude),
       address: {
         streetAddress: this.rfVal(property.streetLine) || '',
         city: property.city || '',

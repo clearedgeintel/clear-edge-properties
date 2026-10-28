@@ -53,8 +53,8 @@ const toNum = (v: unknown): number | null => {
 };
 
 // Search results are a cross-platform shape (UnifiedProperty), not a DB
-// Property. Coordinates aren't part of that contract, so pick them up wherever
-// a platform happens to include them and let the map geocode the rest.
+// Property. The server passes each platform's coordinates through as
+// latitude/longitude; the fallbacks cover per-platform endpoints' raw shapes.
 function searchResultToMapPoint(p: any, index: number): MapPoint {
   const addr = p.address ?? {};
   const street = typeof addr === 'string' ? addr : addr.streetAddress;
@@ -74,7 +74,6 @@ function searchResultToMapPoint(p: any, index: number): MapPoint {
     sqft: toNum(p.sqft),
     capRate: toNum(p.capRate),
     image: Array.isArray(p.images) ? p.images[0] : null,
-    geocodeQuery: [street, addr.city, addr.state, addr.zipCode].filter(Boolean).join(', '),
   };
 }
 

@@ -49,6 +49,15 @@ interface ZillowProperty {
   images: string[];
   url: string;
   brokerName: string;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+/** Finite number or null; search payloads mix numbers, strings and blanks. */
+function coord(value: any): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n !== 0 ? n : null;
 }
 
 interface ZillowSearchParams {
@@ -484,7 +493,9 @@ export class ZillowApiService {
       listingStatus: data.listingStatus || 'ForSale',
       images,
       url,
-      brokerName: data.brokerName || ''
+      brokerName: data.brokerName || '',
+      latitude: coord(data.latitude ?? data.latLong?.latitude),
+      longitude: coord(data.longitude ?? data.latLong?.longitude),
     };
   }
 
@@ -530,7 +541,9 @@ export class ZillowIntegrationService {
       isForeclosure: zillowProperty.isForeclosure || false,
       isNewConstruction: zillowProperty.isNewConstruction || false,
       images: Array.isArray(zillowProperty.images) ? zillowProperty.images : [],
-      brokerName: zillowProperty.brokerName || ''
+      brokerName: zillowProperty.brokerName || '',
+      latitude: zillowProperty.latitude ?? null,
+      longitude: zillowProperty.longitude ?? null,
     };
   }
 
