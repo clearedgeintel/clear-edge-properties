@@ -64,7 +64,7 @@ function App() {
       <TooltipProvider>
         <div className="min-h-screen bg-slate-50 lg:flex">
           <Navigation />
-          <main className="flex-1 lg:ml-0 pb-16 lg:pb-0">
+          <main className="min-w-0 flex-1 lg:ml-0 pb-16 lg:pb-0">
             <Router />
           </main>
         </div>
