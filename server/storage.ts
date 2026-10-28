@@ -7,6 +7,7 @@ import {
   propertyDetails,
   userProperties,
   pipelineStages,
+  propertyActivities,
   whitelabelBranding,
   apiKeys,
   processedWebhookEvents,
@@ -21,6 +22,7 @@ import {
   type InsertPropertyDetail,
   type UserProperty,
   type PipelineStage,
+  type PropertyActivity,
   type WhitelabelBranding,
   type UpdateWhitelabelBranding,
   type ApiKey,
@@ -78,6 +80,21 @@ export interface IStorage {
 
   // Pipeline stages
   getPipelineStages(tenantId: string): Promise<PipelineStage[]>;
+  createPipelineStage(tenantId: string, values: { name: string; color?: string | null; icon?: string | null }): Promise<PipelineStage>;
+  updatePipelineStage(tenantId: string, id: string, values: { name?: string; color?: string | null; icon?: string | null }): Promise<PipelineStage | undefined>;
+  reorderPipelineStages(tenantId: string, orderedIds: string[]): Promise<PipelineStage[]>;
+  deletePipelineStage(tenantId: string, id: string, moveDealsTo: string | null): Promise<{ moved: number; movedIds: string[] }>;
+  addPropertyActivity(values: {
+    tenantId: string;
+    userId: string;
+    userPropertyId: string;
+    activityType: string;
+    title: string;
+    description?: string | null;
+    metadata?: Record<string, unknown>;
+  }): Promise<void>;
+  getPropertyActivities(tenantId: string, userPropertyId: string): Promise<PropertyActivity[]>;
+  getSavedSearchMatchesWithProperties(savedSearchId: string): Promise<Array<SavedSearchMatch & { property: Property | null }>>;
 
   // White-label branding (per tenant)
   getTenantBranding(tenantId: string): Promise<WhitelabelBranding | undefined>;
@@ -378,6 +395,111 @@ export class DatabaseStorage implements IStorage {
       .from(pipelineStages)
       .where(eq(pipelineStages.tenantId, tenantId))
       .orderBy(asc(pipelineStages.orderIndex));
+  }
+
+  async createPipelineStage(
+    tenantId: string,
+    values: { name: string; color?: string | null; icon?: string | null },
+  ): Promise<PipelineStage> {
+    const [{ max }] = await db
+      .select({ max: sql<number>`coalesce(max(${pipelineStages.orderIndex}), 0)` })
+      .from(pipelineStages)
+      .where(eq(pipelineStages.tenantId, tenantId));
+    const [row] = await db
+      .insert(pipelineStages)
+      .values({ tenantId, name: values.name, color: values.color ?? undefined, icon: values.icon ?? null, orderIndex: Number(max) + 1 })
+      .returning();
+    return row;
+  }
+
+  async updatePipelineStage(
+    tenantId: string,
+    id: string,
+    values: { name?: string; color?: string | null; icon?: string | null },
+  ): Promise<PipelineStage | undefined> {
+    const [row] = await db
+      .update(pipelineStages)
+      .set({ ...values, updatedAt: sql`now()` })
+      .where(and(eq(pipelineStages.id, id), eq(pipelineStages.tenantId, tenantId)))
+      .returning();
+    return row;
+  }
+
+  // (tenant_id, order_index) is UNIQUE and not deferrable, so renumber in two
+  // phases inside one transaction: park every stage on a negative index, then
+  // assign the final 1..n order.
+  async reorderPipelineStages(tenantId: string, orderedIds: string[]): Promise<PipelineStage[]> {
+    return db.transaction(async (tx) => {
+      const current = await tx.select().from(pipelineStages).where(eq(pipelineStages.tenantId, tenantId));
+      const ids = new Set(current.map((s) => s.id));
+      if (orderedIds.length !== current.length || orderedIds.some((id) => !ids.has(id))) {
+        throw new Error("Order must list every stage exactly once");
+      }
+      for (let i = 0; i < orderedIds.length; i++) {
+        await tx.update(pipelineStages).set({ orderIndex: -(i + 1) })
+          .where(and(eq(pipelineStages.id, orderedIds[i]), eq(pipelineStages.tenantId, tenantId)));
+      }
+      for (let i = 0; i < orderedIds.length; i++) {
+        await tx.update(pipelineStages).set({ orderIndex: i + 1, updatedAt: sql`now()` })
+          .where(and(eq(pipelineStages.id, orderedIds[i]), eq(pipelineStages.tenantId, tenantId)));
+      }
+      return tx.select().from(pipelineStages).where(eq(pipelineStages.tenantId, tenantId)).orderBy(asc(pipelineStages.orderIndex));
+    });
+  }
+
+  // Deals in the deleted stage move to `moveDealsTo` (or back to "saved" when
+  // null) before the stage goes, rather than relying on ON DELETE SET NULL.
+  async deletePipelineStage(tenantId: string, id: string, moveDealsTo: string | null): Promise<{ moved: number; movedIds: string[] }> {
+    return db.transaction(async (tx) => {
+      const moved = await tx
+        .update(userProperties)
+        .set({ pipelineStageId: moveDealsTo, updatedAt: sql`now()` })
+        .where(and(eq(userProperties.tenantId, tenantId), eq(userProperties.pipelineStageId, id)))
+        .returning({ id: userProperties.id });
+      await tx.delete(pipelineStages).where(and(eq(pipelineStages.id, id), eq(pipelineStages.tenantId, tenantId)));
+      return { moved: moved.length, movedIds: moved.map((m) => m.id) };
+    });
+  }
+
+  // ---- Deal activity history ----
+  async addPropertyActivity(values: {
+    tenantId: string;
+    userId: string;
+    userPropertyId: string;
+    activityType: string;
+    title: string;
+    description?: string | null;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    await db.insert(propertyActivities).values({
+      tenantId: values.tenantId,
+      userId: values.userId,
+      userPropertyId: values.userPropertyId,
+      activityType: values.activityType,
+      title: values.title,
+      description: values.description ?? null,
+      metadata: values.metadata ?? {},
+    });
+  }
+
+  async getPropertyActivities(tenantId: string, userPropertyId: string): Promise<PropertyActivity[]> {
+    return db
+      .select()
+      .from(propertyActivities)
+      .where(and(eq(propertyActivities.tenantId, tenantId), eq(propertyActivities.userPropertyId, userPropertyId)))
+      .orderBy(desc(propertyActivities.createdAt));
+  }
+
+  async getSavedSearchMatchesWithProperties(
+    savedSearchId: string,
+  ): Promise<Array<SavedSearchMatch & { property: Property | null }>> {
+    const rows = await db
+      .select()
+      .from(savedSearchMatches)
+      .leftJoin(properties, eq(savedSearchMatches.zpid, properties.zpid))
+      .where(eq(savedSearchMatches.savedSearchId, savedSearchId))
+      .orderBy(desc(savedSearchMatches.matchDate));
+    return rows.map((r) => ({ ...r.saved_search_matches, property: r.properties }));
   }
 
   // ---- White-label branding ----

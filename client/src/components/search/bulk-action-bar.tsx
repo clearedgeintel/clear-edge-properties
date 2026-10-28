@@ -31,7 +31,7 @@ export function BulkActionBar({ items, onClear }: BulkActionBarProps) {
   const run = async (stageId?: string | null) => {
     setBusy(true);
     const outcomes = await Promise.allSettled(
-      items.map((it) => addDeal.mutateAsync({ source: it.dealSource, stageId })),
+      items.map((it) => addDeal.mutateAsync({ source: it.dealSource, stageId, origin: 'search (bulk)' })),
     );
     setBusy(false);
     const ok = outcomes.filter((o) => o.status === 'fulfilled').length;

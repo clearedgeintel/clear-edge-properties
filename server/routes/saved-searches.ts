@@ -117,7 +117,8 @@ router.get("/api/saved-searches/:id/matches", requireAuth, async (req: Request, 
     const { tenantId } = (req as any).ctx;
     const search = await storage.getSavedSearch(tenantId, req.params.id);
     if (!search) return res.status(404).json({ error: "Saved search not found" });
-    const matches = await storage.getSavedSearchMatches(search.id);
+    // Each match carries its catalog property so the page can show and act on it.
+    const matches = await storage.getSavedSearchMatchesWithProperties(search.id);
     res.json({ matches });
   } catch (error: any) {
     console.error("Get saved search matches error:", error);

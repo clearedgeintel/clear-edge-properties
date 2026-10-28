@@ -9,7 +9,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
-import { Plus, Pencil, Trash2, Play, Bell, BellOff, MapPin, Search, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Play, Bell, BellOff, MapPin, Search, Loader2, ChevronDown } from 'lucide-react';
+import { SavedSearchMatches } from '@/components/saved-search-matches';
+import { cn } from '@/lib/utils';
 
 interface SavedSearch {
   id: string;
@@ -92,6 +94,20 @@ export default function SavedSearchesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(blankForm);
   const [runningId, setRunningId] = useState<string | null>(null);
+  // Deep link from an alert email: ?search=<id>&match=<zpid> opens that search's
+  // matches and highlights the property.
+  const [deepLink] = useState(() => {
+    const q = new URLSearchParams(window.location.search);
+    return { search: q.get('search'), match: q.get('match') };
+  });
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(deepLink.search ? [deepLink.search] : []));
+  const toggle = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const { data, isLoading } = useQuery<{ savedSearches: SavedSearch[] }>({ queryKey: ['/api/saved-searches'] });
   const list = data?.savedSearches ?? [];
@@ -116,8 +132,10 @@ export default function SavedSearchesPage() {
   const runMutation = useMutation({
     mutationFn: async (id: string) => (await apiRequest('POST', `/api/saved-searches/${id}/run`)).json(),
     onMutate: (id: string) => setRunningId(id),
-    onSuccess: (res: any) => {
+    onSuccess: (res: any, id: string) => {
       invalidate();
+      qc.invalidateQueries({ queryKey: [`/api/saved-searches/${id}/matches`] });
+      if (res.matched) setExpanded((prev) => new Set(prev).add(id));
       toast({
         title: `Found ${res.matched} match${res.matched === 1 ? '' : 'es'}`,
         description: `${res.newMatches} new · ${res.enriched} enriched${res.notified ? ' · alert sent' : ''}`,
@@ -155,7 +173,7 @@ export default function SavedSearchesPage() {
           <div className="space-y-2">
             <p className="text-sm text-slate-500">{list.length} saved search{list.length > 1 ? 'es' : ''}</p>
             {list.map((s) => (
-              <Card key={s.id}>
+              <Card key={s.id} className={cn('overflow-hidden', deepLink.search === s.id && 'ring-2 ring-brand-orange/60')}>
                 <CardContent className="p-4 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -170,6 +188,15 @@ export default function SavedSearchesPage() {
                     <p className="text-xs text-slate-400 mt-1">
                       {s.lastRunAt ? `Last run ${new Date(s.lastRunAt).toLocaleString()} · ${s.lastMatchCount ?? 0} matches` : 'Never run'}
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => toggle(s.id)}
+                      aria-expanded={expanded.has(s.id)}
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand-blue hover:underline"
+                    >
+                      {expanded.has(s.id) ? 'Hide matches' : 'View matches & add to pipeline'}
+                      <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', expanded.has(s.id) && 'rotate-180')} />
+                    </button>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <Button variant="ghost" size="sm" onClick={() => runMutation.mutate(s.id)} disabled={runningId === s.id} title="Run now">
@@ -181,6 +208,13 @@ export default function SavedSearchesPage() {
                     </Button>
                   </div>
                 </CardContent>
+                {expanded.has(s.id) && (
+                  <SavedSearchMatches
+                    savedSearchId={s.id}
+                    lastRunAt={s.lastRunAt}
+                    highlightZpid={deepLink.search === s.id ? deepLink.match : null}
+                  />
+                )}
               </Card>
             ))}
           </div>

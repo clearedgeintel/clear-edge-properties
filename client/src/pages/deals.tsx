@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Plus, MoreVertical, FileText, Trash2, Calendar, Loader2, Upload, Download, ExternalLink, Eye, MapPin, Search,
-  Bookmark, BookmarkX,
+  Bookmark, BookmarkX, Settings2,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
@@ -27,10 +27,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
-import { useDealActions, useDeals, type PipelineDeal, type PipelineStage } from "@/lib/deals";
+import { isDealsQuery, useDealActions, useDeals, type PipelineDeal, type PipelineStage } from "@/lib/deals";
 import { EmptyState, ErrorState, PageHeader, PropertyImageFallback } from "@/components/states";
 import { ScoreBadge } from "@/components/score-badge";
 import { PropertyDrawer } from "@/components/property-drawer";
+import { DealActivity } from "@/components/deal-activity";
+import { StageManager } from "@/components/stage-manager";
 import { platformInfo } from "@/components/search/platforms";
 import type { Property } from "@shared/schema";
 import { cn } from "@/lib/utils";
@@ -46,6 +48,7 @@ export default function DealsPage() {
   const [notesDeal, setNotesDeal] = useState<PipelineDeal | null>(null);
   const [selectedDeal, setSelectedDeal] = useState<PipelineDeal | null>(null);
   const [drawerProperty, setDrawerProperty] = useState<Property | null>(null);
+  const [stagesOpen, setStagesOpen] = useState(false);
 
   // Deep link from "View pipeline" (/deals?deal=<id>): scroll to and briefly
   // highlight the card once deals have loaded.
@@ -79,7 +82,8 @@ export default function DealsPage() {
       if (ctx?.prev) qc.setQueryData(DEALS_KEY, ctx.prev);
       toast({ title: "Update failed", description: "Could not save the change.", variant: "destructive" });
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: DEALS_KEY }),
+    // Prefix match also refreshes open activity timelines.
+    onSettled: () => qc.invalidateQueries({ predicate: isDealsQuery }),
   });
 
   const move = (id: string, stageId: string | null) => patch.mutate({ id, body: { pipelineStageId: stageId } });
@@ -102,6 +106,9 @@ export default function DealsPage() {
         description="Track properties from first look to close. Add them from Search or Browse in one click."
         actions={
           <>
+            <Button variant="ghost" onClick={() => setStagesOpen(true)}>
+              <Settings2 className="mr-1.5 h-4 w-4" /> Stages
+            </Button>
             <Button variant="outline" asChild>
               <Link href="/property-search">
                 <Search className="mr-1.5 h-4 w-4" /> Find deals
@@ -157,7 +164,7 @@ export default function DealsPage() {
           />
         )}
         <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 min-h-[600px]">
+          <div className="grid grid-cols-1 gap-4 min-h-[600px] md:grid-cols-2 lg:grid-cols-3 xl:grid-flow-col xl:grid-cols-none xl:auto-cols-[minmax(170px,1fr)] xl:overflow-x-auto xl:pb-2">
             {stages.map((stage) => (
               <div key={stage.id} className="flex flex-col">
                 <div className="mb-3 flex items-center justify-between">
@@ -251,7 +258,7 @@ export default function DealsPage() {
       />
 
       <Dialog open={!!selectedDeal} onOpenChange={() => setSelectedDeal(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader><DialogTitle>Deal Details</DialogTitle></DialogHeader>
           {selectedDeal && (
             <DealDetails
@@ -265,6 +272,8 @@ export default function DealsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <StageManager open={stagesOpen} onOpenChange={setStagesOpen} />
 
       <PropertyDrawer
         property={drawerProperty}
@@ -623,6 +632,8 @@ function DealDetails({
       )}
 
       <DocumentsSection dealId={deal.id} />
+
+      <DealActivity dealId={deal.id} />
 
       <div className="flex flex-wrap gap-2">
         {deal.property && (

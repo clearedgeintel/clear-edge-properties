@@ -110,7 +110,7 @@ function SheetBody({ item }: { item: SearchItem }) {
           </div>
         </SheetHeader>
 
-        <DealControl zpid={item.zpid} source={item.dealSource} variant="full" listingUrl={v.listingUrl} />
+        <DealControl zpid={item.zpid} source={item.dealSource} origin="search" variant="full" listingUrl={v.listingUrl} />
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {stats.map((s) => (

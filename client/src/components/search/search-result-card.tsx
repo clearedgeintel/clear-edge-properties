@@ -211,7 +211,7 @@ export const SearchResultCard = forwardRef<HTMLDivElement, SearchResultCardProps
             </a>
           )}
         </div>
-        <DealControl zpid={item.zpid} source={item.dealSource} block listingUrl={v.listingUrl} />
+        <DealControl zpid={item.zpid} source={item.dealSource} origin="search" block listingUrl={v.listingUrl} />
         </div>
       </div>
     </div>

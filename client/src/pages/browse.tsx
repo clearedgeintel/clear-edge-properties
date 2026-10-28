@@ -512,7 +512,7 @@ export default function Browse() {
                         if (p) openProperty(p);
                       }}
                       renderAction={(id) => (
-                        <DealControl zpid={id} source={{ zpid: id }} block listingUrl={byId.get(id)?.url} />
+                        <DealControl zpid={id} source={{ zpid: id }} origin="browse map" block listingUrl={byId.get(id)?.url} />
                       )}
                       height="calc(100vh - 15rem)"
                       className="min-h-[560px]"
