@@ -27,6 +27,8 @@ export interface ScoringConfig {
 }
 
 export interface PropertyData {
+  latitude?: number | null;
+  longitude?: number | null;
   address: string;
   city: string;
   state: string;

@@ -44,6 +44,51 @@ const VIEW_OPTIONS: { value: ViewMode; label: string; icon: typeof Grid3X3 }[] =
   { value: "map", label: "Map", icon: MapIcon },
 ];
 
+// ---- URL state: filters and view survive refresh and can be shared ----
+
+const SORTS = ["score-desc", "score-asc", "price-asc", "price-desc", "newest", "oldest"] as const;
+const URL_NUMBER_KEYS = ["priceMin", "priceMax", "scoreMin", "scoreMax"] as const;
+
+function readUrlState(): { search: PropertySearch; query: string; view: ViewMode } {
+  const params = new URLSearchParams(window.location.search);
+  const search: PropertySearch = { ...DEFAULT_SEARCH };
+
+  for (const key of URL_NUMBER_KEYS) {
+    const raw = params.get(key);
+    const n = raw === null || raw === "" ? NaN : Number(raw);
+    if (Number.isFinite(n) && n >= 0) search[key] = n;
+  }
+  const type = params.get("type");
+  if (type && HOME_TYPES.some((t) => t.value === type)) search.homeType = type;
+  const sort = params.get("sort");
+  if (sort && (SORTS as readonly string[]).includes(sort)) search.sortBy = sort as PropertySearch["sortBy"];
+
+  const view = params.get("view");
+  return {
+    search,
+    query: params.get("q") ?? "",
+    view: view === "map" || view === "table" ? view : "grid",
+  };
+}
+
+function writeUrlState(search: PropertySearch, query: string, view: ViewMode) {
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  for (const key of URL_NUMBER_KEYS) {
+    if (search[key] !== undefined) params.set(key, String(search[key]));
+  }
+  if (search.homeType) params.set("type", search.homeType);
+  if (search.sortBy && search.sortBy !== DEFAULT_SEARCH.sortBy) params.set("sort", search.sortBy);
+  if (view !== "grid") params.set("view", view);
+
+  const qs = params.toString();
+  const next = `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`;
+  // replaceState: filter tweaks shouldn't flood the back button.
+  if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+    window.history.replaceState(window.history.state, "", next);
+  }
+}
+
 function useDebounced<T>(value: T, delay = 350): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -138,14 +183,19 @@ export default function Browse() {
   const { hasActiveSubscription } = useAuth();
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [initialUrlState] = useState(readUrlState);
+  const [viewMode, setViewMode] = useState<ViewMode>(initialUrlState.view);
   const [mapSelectedId, setMapSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [mobileMapList, setMobileMapList] = useState(false);
 
-  const [searchParams, setSearchParams] = useState<PropertySearch>(DEFAULT_SEARCH);
-  const [queryInput, setQueryInput] = useState("");
+  const [searchParams, setSearchParams] = useState<PropertySearch>(initialUrlState.search);
+  const [queryInput, setQueryInput] = useState(initialUrlState.query);
   const debouncedQuery = useDebounced(queryInput.trim());
+
+  useEffect(() => {
+    writeUrlState(searchParams, debouncedQuery, viewMode);
+  }, [searchParams, debouncedQuery, viewMode]);
 
   const effectiveParams = useMemo<PropertySearch>(
     () => ({ ...searchParams, query: debouncedQuery || undefined }),

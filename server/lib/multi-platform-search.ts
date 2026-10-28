@@ -54,6 +54,8 @@ export interface UnifiedProperty {
   estimatedRoi: string;
   metrics: any;
   listingUrl?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   
   // Residential specific
   bedrooms?: number;
@@ -320,6 +322,8 @@ export class MultiPlatformSearchService {
       estimatedRoi: property.estimatedRoi || '0.00',
       metrics: property.metrics || {},
       listingUrl: property.url,
+      latitude: property.latitude ?? null,
+      longitude: property.longitude ?? null,
       agent: property.broker,
       capRate: property.capRate,
       noi: property.noi,
@@ -354,6 +358,8 @@ export class MultiPlatformSearchService {
       estimatedRoi: property.estimatedRoi || '0.00',
       metrics: property.metrics || {},
       listingUrl: property.url,
+      latitude: property.latitude ?? null,
+      longitude: property.longitude ?? null,
       agent: property.brokerName ? { company: property.brokerName } : undefined,
       bedrooms: property.numBeds,
       bathrooms: property.numBaths,
@@ -379,6 +385,8 @@ export class MultiPlatformSearchService {
       estimatedRoi: property.estimatedRoi || '0.00',
       metrics: property.metrics || {},
       listingUrl: property.url,
+      latitude: property.latitude ?? null,
+      longitude: property.longitude ?? null,
       agent: property.broker,
       capRate: property.capRate,
       noi: property.noi,
@@ -414,6 +422,8 @@ export class MultiPlatformSearchService {
       estimatedRoi: property.estimatedRoi || '0.00',
       metrics: property.metrics || {},
       listingUrl: property.url,
+      latitude: property.latitude ?? null,
+      longitude: property.longitude ?? null,
       bedrooms: property.bedrooms,
       bathrooms: property.bathrooms,
       yearBuilt: property.yearBuilt,

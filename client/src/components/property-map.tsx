@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 /** Minimal shape the map needs; adapters below convert app data into it. */
 export interface MapPoint {
   id: string;
-  /** null when the source has no coordinates (may be geocoded, else skipped). */
+  /** null when the source has no coordinates; such points are skipped. */
   lat: number | null;
   lng: number | null;
   score: number | null;
@@ -26,8 +26,6 @@ export interface MapPoint {
   capRate?: number | null;
   cashFlow?: number | null;
   image?: string | null;
-  /** Used only for the geocoding fallback when lat/lng are missing. */
-  geocodeQuery?: string;
 }
 
 export interface PropertyMapProps {
@@ -72,7 +70,6 @@ export function propertyToMapPoint(p: Property): MapPoint {
     capRate: num(p.capRatePercent),
     cashFlow: num(p.monthlyCashFlow),
     image: p.imgMain,
-    geocodeQuery: [p.address, p.addressCity, p.addressState].filter(Boolean).join(", "),
   };
 }
 

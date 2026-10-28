@@ -94,6 +94,7 @@ export interface IStorage {
   // Stripe webhook idempotency
   isWebhookEventProcessed(eventId: string): Promise<boolean>;
   markWebhookEventProcessed(eventId: string, type: string): Promise<void>;
+  processWebhookEventOnce(eventId: string, type: string, handler: () => Promise<void>): Promise<"processed" | "duplicate">;
 
   // Cash buyers (tenant-scoped)
   listBuyers(tenantId: string): Promise<Buyer[]>;
@@ -435,6 +436,28 @@ export class DatabaseStorage implements IStorage {
 
   async markWebhookEventProcessed(eventId: string, type: string): Promise<void> {
     await db.insert(processedWebhookEvents).values({ id: eventId, type }).onConflictDoNothing();
+  }
+
+  // Atomic exactly-once: the event row is claimed inside a transaction that stays
+  // open while the handler runs. A concurrent delivery of the same event blocks on
+  // the primary key until we commit, then sees the conflict and skips. If the
+  // handler throws (or the process dies) the transaction rolls back, releasing the
+  // claim so Stripe's retry can process it.
+  async processWebhookEventOnce(
+    eventId: string,
+    type: string,
+    handler: () => Promise<void>,
+  ): Promise<"processed" | "duplicate"> {
+    return db.transaction(async (tx) => {
+      const claimed = await tx
+        .insert(processedWebhookEvents)
+        .values({ id: eventId, type })
+        .onConflictDoNothing()
+        .returning({ id: processedWebhookEvents.id });
+      if (claimed.length === 0) return "duplicate";
+      await handler();
+      return "processed";
+    });
   }
 
   // ---- Cash buyers ----

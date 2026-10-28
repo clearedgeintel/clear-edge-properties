@@ -40,7 +40,6 @@ app.use(
               "https://api.mapbox.com",
               "https://events.mapbox.com",
               "https://*.tiles.mapbox.com",
-              "https://nominatim.openstreetmap.org",
               ...supabaseSources,
             ],
             frameSrc: ["https://js.stripe.com", "https://hooks.stripe.com"],

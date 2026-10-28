@@ -28,70 +28,18 @@ const US_CENTER = { longitude: -98.5795, latitude: 39.8283, zoom: 3.2 };
 const BRAND_NAVY = "#062B6F";
 const SOURCE_ID = "properties";
 const POINT_LAYER = "property-points";
-// Cap browser geocoding (Nominatim) to stay within its usage policy.
-const MAX_GEOCODE = 20;
-
-// ---- Geocoding fallback for points without stored coordinates ----
-
-const geocodeCache = new globalThis.Map<string, { lat: number; lng: number } | null>();
-
-async function geocode(query: string): Promise<{ lat: number; lng: number } | null> {
-  if (geocodeCache.has(query)) return geocodeCache.get(query)!;
-  try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`,
-    );
-    const data = await res.json();
-    const hit = data?.[0] ? { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) } : null;
-    geocodeCache.set(query, hit);
-    return hit;
-  } catch {
-    return null;
-  }
-}
 
 type Located = MapPoint & { lat: number; lng: number };
 
-/** Points with coordinates render immediately; missing ones fill in as geocoded. */
+/**
+ * Coordinates come from the server (stored on DB properties, and passed through
+ * from each platform's search payload), so the map never geocodes in the
+ * browser. Points without coordinates are skipped and counted in an overlay.
+ */
 function useLocatedPoints(points: MapPoint[]): Located[] {
-  const [geocoded, setGeocoded] = useState<Record<string, { lat: number; lng: number }>>({});
-
-  // Keyed on content, not identity, so callers can pass freshly-mapped arrays.
-  const missingKey = points
-    .filter((p) => (p.lat == null || p.lng == null) && p.geocodeQuery)
-    .map((p) => `${p.id}:${p.geocodeQuery}`)
-    .join("|");
-
-  useEffect(() => {
-    let cancelled = false;
-    const missing = points
-      .filter((p) => (p.lat == null || p.lng == null) && p.geocodeQuery)
-      .slice(0, MAX_GEOCODE);
-    if (!missing.length) return;
-
-    (async () => {
-      for (const p of missing) {
-        const hit = await geocode(p.geocodeQuery!);
-        if (cancelled) return;
-        if (hit) setGeocoded((prev) => ({ ...prev, [p.id]: hit }));
-        // Be polite to the free geocoding service.
-        await new Promise((r) => setTimeout(r, 100));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [missingKey]);
-
   return useMemo(
-    () =>
-      points.flatMap((p) => {
-        if (p.lat != null && p.lng != null) return [{ ...p, lat: p.lat, lng: p.lng }];
-        const g = geocoded[p.id];
-        return g ? [{ ...p, ...g }] : [];
-      }),
-    [points, geocoded],
+    () => points.filter((p): p is Located => p.lat != null && p.lng != null),
+    [points],
   );
 }
 

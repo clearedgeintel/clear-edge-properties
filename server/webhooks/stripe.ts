@@ -53,81 +53,74 @@ export function setupStripeWebhooks(app: Express) {
         return res.status(400).send(`Webhook Error: ${err.message}`);
       }
 
-      // Idempotency: Stripe may deliver the same event more than once. Ack and skip
-      // if we've already handled it so we never double-process a billing change.
+      // Idempotency: Stripe may deliver the same event more than once, even
+      // concurrently. processWebhookEventOnce claims event.id atomically and only
+      // keeps the claim if handling succeeds (see server/storage.ts).
       try {
-        if (await storage.isWebhookEventProcessed(event.id)) {
+        const outcome = await storage.processWebhookEventOnce(event.id, event.type, async () => {
+          switch (event.type) {
+            case "customer.subscription.created":
+            case "customer.subscription.updated": {
+              const subscription = event.data.object as Stripe.Subscription;
+              const customerId = subscription.customer as string;
+              const tenant = await storage.getTenantByStripeCustomerId(customerId);
+
+              if (tenant) {
+                const status = mapSubscriptionStatus(subscription.status);
+                // Move the tier with the status so quotas actually change: active →
+                // paid tier, canceled/inactive → free. past_due keeps the tier (grace
+                // period) and only flips status.
+                if (status === "active") {
+                  await storage.updateTenantPlan(tenant.id, status, PAID_TIER);
+                } else if (status === "canceled" || status === "inactive") {
+                  await storage.updateTenantPlan(tenant.id, status, "free");
+                } else {
+                  await storage.updateTenantSubscriptionStatus(tenant.id, status);
+                }
+                console.log(`Updated tenant ${tenant.id} subscription → status=${status}`);
+              } else {
+                console.warn(`No tenant found for Stripe customer ${customerId}`);
+              }
+              break;
+            }
+
+            case "customer.subscription.deleted": {
+              const subscription = event.data.object as Stripe.Subscription;
+              const customerId = subscription.customer as string;
+              const tenant = await storage.getTenantByStripeCustomerId(customerId);
+
+              if (tenant) {
+                await storage.updateTenantPlan(tenant.id, "canceled", "free");
+                console.log(`Canceled subscription for tenant ${tenant.id} (tier → free)`);
+              } else {
+                console.warn(`No tenant found for Stripe customer ${customerId}`);
+              }
+              break;
+            }
+
+            case "invoice.payment_failed": {
+              const invoice = event.data.object as Stripe.Invoice;
+              const customerId = invoice.customer as string;
+              const tenant = await storage.getTenantByStripeCustomerId(customerId);
+
+              if (tenant) {
+                await storage.updateTenantSubscriptionStatus(tenant.id, "past_due");
+                console.log(`Payment failed for tenant ${tenant.id}`);
+              } else {
+                console.warn(`No tenant found for Stripe customer ${customerId}`);
+              }
+              break;
+            }
+
+            default:
+              console.log(`Unhandled event type ${event.type}`);
+          }
+        });
+
+        if (outcome === "duplicate") {
           console.log(`Skipping already-processed webhook event ${event.id}`);
           return res.json({ received: true, duplicate: true });
         }
-      } catch (error) {
-        // Can't tell whether this is a duplicate. Fail so Stripe retries later
-        // rather than risk double-processing a billing change.
-        console.error("Failed to check webhook idempotency:", error);
-        return res.status(500).json({ error: "Idempotency check failed" });
-      }
-
-      try {
-        switch (event.type) {
-          case "customer.subscription.created":
-          case "customer.subscription.updated": {
-            const subscription = event.data.object as Stripe.Subscription;
-            const customerId = subscription.customer as string;
-            const tenant = await storage.getTenantByStripeCustomerId(customerId);
-
-            if (tenant) {
-              const status = mapSubscriptionStatus(subscription.status);
-              // Move the tier with the status so quotas actually change: active →
-              // paid tier, canceled/inactive → free. past_due keeps the tier (grace
-              // period) and only flips status.
-              if (status === "active") {
-                await storage.updateTenantPlan(tenant.id, status, PAID_TIER);
-              } else if (status === "canceled" || status === "inactive") {
-                await storage.updateTenantPlan(tenant.id, status, "free");
-              } else {
-                await storage.updateTenantSubscriptionStatus(tenant.id, status);
-              }
-              console.log(`Updated tenant ${tenant.id} subscription → status=${status}`);
-            } else {
-              console.warn(`No tenant found for Stripe customer ${customerId}`);
-            }
-            break;
-          }
-
-          case "customer.subscription.deleted": {
-            const subscription = event.data.object as Stripe.Subscription;
-            const customerId = subscription.customer as string;
-            const tenant = await storage.getTenantByStripeCustomerId(customerId);
-
-            if (tenant) {
-              await storage.updateTenantPlan(tenant.id, "canceled", "free");
-              console.log(`Canceled subscription for tenant ${tenant.id} (tier → free)`);
-            } else {
-              console.warn(`No tenant found for Stripe customer ${customerId}`);
-            }
-            break;
-          }
-
-          case "invoice.payment_failed": {
-            const invoice = event.data.object as Stripe.Invoice;
-            const customerId = invoice.customer as string;
-            const tenant = await storage.getTenantByStripeCustomerId(customerId);
-
-            if (tenant) {
-              await storage.updateTenantSubscriptionStatus(tenant.id, "past_due");
-              console.log(`Payment failed for tenant ${tenant.id}`);
-            } else {
-              console.warn(`No tenant found for Stripe customer ${customerId}`);
-            }
-            break;
-          }
-
-          default:
-            console.log(`Unhandled event type ${event.type}`);
-        }
-
-        // Record only after successful processing so a transient failure can be retried.
-        await storage.markWebhookEventProcessed(event.id, event.type);
 
         res.json({ received: true });
       } catch (error) {
