@@ -1,6 +1,8 @@
 import { forwardRef, useEffect, useRef, useState } from 'react';
 import { ExternalLink, User } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DealControl } from '@/components/deal-control';
 import { ScoreBadge } from '@/components/score-badge';
 import { PropertyImageFallback } from '@/components/states';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,6 +18,10 @@ interface SearchResultCardProps {
   onSelect?: () => void;
   onOpen: () => void;
   onHover?: (hovering: boolean) => void;
+  /** Bulk selection; the checkbox shows on hover, or always once anything is selected. */
+  checked?: boolean;
+  selectionActive?: boolean;
+  onCheckedChange?: (checked: boolean) => void;
 }
 
 function Metric({ label, value, tone }: { label: string; value: string; tone?: 'positive' | 'negative' }) {
@@ -36,7 +42,7 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: '
 }
 
 export const SearchResultCard = forwardRef<HTMLDivElement, SearchResultCardProps>(function SearchResultCard(
-  { item, selected, onSelect, onOpen, onHover },
+  { item, selected, onSelect, onOpen, onHover, checked = false, selectionActive = false, onCheckedChange },
   forwardedRef,
 ) {
   const v = item.view;
@@ -130,6 +136,18 @@ export const SearchResultCard = forwardRef<HTMLDivElement, SearchResultCardProps
         <span className={cn('absolute left-3 top-3 rounded-md px-2 py-0.5 text-[11px] font-semibold shadow-sm', platform.badgeClass)}>
           {platform.shortName}
         </span>
+        {onCheckedChange && (
+          <label
+            onClick={(e) => e.stopPropagation()}
+            className={cn(
+              'absolute bottom-2.5 right-3 flex cursor-pointer items-center gap-1.5 rounded-md bg-white/95 px-2 py-1 text-xs font-medium text-slate-700 shadow-sm transition-opacity',
+              checked || selectionActive ? 'opacity-100' : 'opacity-0 focus-within:opacity-100 group-hover:opacity-100',
+            )}
+          >
+            <Checkbox checked={checked} onCheckedChange={(c) => onCheckedChange(c === true)} aria-label="Select property" />
+            Select
+          </label>
+        )}
         {v.score != null && (
           <div className="absolute right-3 top-3">
             <ScoreBadge investmentScorePercent={v.score} />
@@ -162,8 +180,10 @@ export const SearchResultCard = forwardRef<HTMLDivElement, SearchResultCardProps
           <Metric {...secondaryMetric} />
         </div>
 
-        {/* Agent: de-emphasized, pinned to the bottom so cards line up */}
-        <div className="mt-auto flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+        {/* Footer pinned to the bottom so cards line up: agent (de-emphasized),
+            then the pipeline action. */}
+        <div className="mt-auto space-y-2.5 border-t border-slate-100 pt-3">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             {agent?.photo ? (
               <img src={agent.photo} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />
@@ -190,6 +210,8 @@ export const SearchResultCard = forwardRef<HTMLDivElement, SearchResultCardProps
               <ExternalLink className="h-4 w-4" />
             </a>
           )}
+        </div>
+        <DealControl zpid={item.zpid} source={item.dealSource} block listingUrl={v.listingUrl} />
         </div>
       </div>
     </div>

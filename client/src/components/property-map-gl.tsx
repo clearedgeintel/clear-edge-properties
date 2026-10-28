@@ -105,7 +105,15 @@ function layers(selectedId: string | null, interactive: boolean): LayerProps[] {
 
 // ---- Popup ----
 
-function PointPopup({ point, onViewDetails }: { point: Located; onViewDetails?: (id: string) => void }) {
+function PointPopup({
+  point,
+  onViewDetails,
+  renderAction,
+}: {
+  point: Located;
+  onViewDetails?: (id: string) => void;
+  renderAction?: (id: string) => React.ReactNode;
+}) {
   const [imgError, setImgError] = useState(false);
   const stats = [
     point.beds != null && `${point.beds} bd`,
@@ -159,8 +167,9 @@ function PointPopup({ point, onViewDetails }: { point: Located; onViewDetails?: 
             )}
           </div>
         )}
+        {renderAction?.(point.id)}
         {onViewDetails && (
-          <Button size="sm" className="w-full" onClick={() => onViewDetails(point.id)}>
+          <Button size="sm" variant={renderAction ? "outline" : "default"} className="w-full" onClick={() => onViewDetails(point.id)}>
             View details
             <ArrowRight className="ml-1 h-3.5 w-3.5" />
           </Button>
@@ -204,6 +213,7 @@ export default function PropertyMapGL({
   hoveredId = null,
   onSelect,
   onViewDetails,
+  renderAction,
   height = "400px",
   className,
   interactive = true,
@@ -344,7 +354,7 @@ export default function PropertyMapGL({
               if (selectedId === popupPoint.id) onSelect?.(null);
             }}
           >
-            <PointPopup point={popupPoint} onViewDetails={onViewDetails} />
+            <PointPopup point={popupPoint} onViewDetails={onViewDetails} renderAction={renderAction} />
           </Popup>
         )}
       </Map>

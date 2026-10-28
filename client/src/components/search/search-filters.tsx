@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Switch } from '@/components/ui/switch';
 import { formatCompactPrice } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { platformInfo } from './platforms';
@@ -228,19 +227,6 @@ function MoreFields({ form }: { form: Form }) {
         <GroupLabel>Max results per platform</GroupLabel>
         <NumberField form={form} name="maxResults" placeholder="25" min={1} max={100} />
       </div>
-      <Controller
-        control={form.control}
-        name="saveResults"
-        render={({ field }) => (
-          <label className="flex cursor-pointer items-start justify-between gap-4 rounded-lg border border-border p-3">
-            <span>
-              <span className="block text-sm font-medium text-foreground">Save results</span>
-              <span className="block text-xs text-muted-foreground">Import scored results into your property feed.</span>
-            </span>
-            <Switch checked={field.value} onCheckedChange={field.onChange} />
-          </label>
-        )}
-      />
     </div>
   );
 }
@@ -270,7 +256,7 @@ function useSummaries(form: Form) {
     price: range(v.priceMin, v.priceMax, formatCompactPrice),
     rooms: rooms || null,
     size: range(v.sqftMin, v.sqftMax, (n) => `${n.toLocaleString()} sqft`),
-    more: v.saveResults || (v.maxResults != null && v.maxResults !== SEARCH_DEFAULTS.maxResults) ? 'Custom' : null,
+    more: v.maxResults != null && v.maxResults !== SEARCH_DEFAULTS.maxResults ? `${v.maxResults} results` : null,
   };
 }
 

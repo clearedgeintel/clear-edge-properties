@@ -15,6 +15,8 @@ import { PlatformSelector } from '@/components/search/platform-selector';
 import { SearchFilters } from '@/components/search/search-filters';
 import { SearchResultCard, SearchResultCardSkeleton } from '@/components/search/search-result-card';
 import { PropertyDetailSheet } from '@/components/search/property-detail-sheet';
+import { BulkActionBar } from '@/components/search/bulk-action-bar';
+import { DealControl } from '@/components/deal-control';
 import { platformInfo, type PlatformKey } from '@/components/search/platforms';
 import { searchFormSchema, SEARCH_DEFAULTS, type SearchFormData } from '@/components/search/schema';
 import { searchItemToMapPoint, toSearchItems, type SearchItem, type SearchResult } from '@/components/search/adapters';
@@ -63,6 +65,14 @@ export default function PropertySearchPage() {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [sheetItem, setSheetItem] = useState<SearchItem | null>(null);
   const cardRefs = useRef(new Map<string, HTMLDivElement>());
+  const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set());
+  const toggleChecked = (key: string, on: boolean) =>
+    setCheckedKeys((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(key);
+      else next.delete(key);
+      return next;
+    });
 
   const form = useForm<SearchFormData>({
     resolver: zodResolver(searchFormSchema),
@@ -87,16 +97,15 @@ export default function PropertySearchPage() {
       setHasSearched(true);
       setPlatformFilter('all');
       setSelectedKey(null);
+      setCheckedKeys(new Set());
       setDismissedErrors(new Set());
 
       const total = results.reduce((sum, r) => sum + r.properties.length, 0);
-      const saved = results.filter((r) => r.saveMessage).map((r) => r.saveMessage);
       toast({
         title: 'Search completed',
-        description: [
-          Array.isArray(data) ? `Found ${total} properties across ${results.length} platforms` : `Found ${total} properties`,
-          ...saved,
-        ].join('\n'),
+        description: Array.isArray(data)
+          ? `Found ${total} properties across ${results.length} platforms`
+          : `Found ${total} properties`,
       });
     },
     onError: (error) => {
@@ -185,6 +194,9 @@ export default function PropertySearchPage() {
           onSelect={() => setSelectedKey(item.key)}
           onOpen={() => setSheetItem(item)}
           onHover={(h) => setHoveredKey(h ? item.key : null)}
+          checked={checkedKeys.has(item.key)}
+          selectionActive={checkedKeys.size > 0}
+          onCheckedChange={(on) => toggleChecked(item.key, on)}
         />
       ))}
     </div>
@@ -198,6 +210,10 @@ export default function PropertySearchPage() {
         hoveredId={hoveredKey}
         onSelect={setSelectedKey}
         onViewDetails={openDetails}
+        renderAction={(key) => {
+          const it = byKey.get(key);
+          return it ? <DealControl zpid={it.zpid} source={it.dealSource} block listingUrl={it.view.listingUrl} /> : null;
+        }}
         height="100%"
       />
     </div>
@@ -407,6 +423,10 @@ export default function PropertySearchPage() {
         )}
       </div>
 
+      <BulkActionBar
+        items={allItems.filter((it) => checkedKeys.has(it.key))}
+        onClear={() => setCheckedKeys(new Set())}
+      />
       <PropertyDetailSheet item={sheetItem} open={sheetItem !== null} onOpenChange={(open) => !open && setSheetItem(null)} />
     </div>
   );

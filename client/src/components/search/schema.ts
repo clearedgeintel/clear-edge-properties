@@ -15,7 +15,6 @@ export const searchFormSchema = z.object({
   homeType: z.string().optional(),
   propertyTypes: z.array(z.string()).optional(),
   maxResults: z.number().min(1).max(100).default(20),
-  saveResults: z.boolean().default(false),
 });
 
 export type SearchFormData = z.infer<typeof searchFormSchema>;
@@ -34,5 +33,4 @@ export const SEARCH_DEFAULTS: SearchFormData = {
   sqftMax: undefined,
   homeType: undefined,
   maxResults: 25,
-  saveResults: false,
 };

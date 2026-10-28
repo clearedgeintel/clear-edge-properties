@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { MapPinOff } from "lucide-react";
 import type { Property } from "@shared/schema";
 import { toScore } from "@/lib/score";
@@ -36,6 +36,8 @@ export interface PropertyMapProps {
   onSelect?: (id: string | null) => void;
   /** "View details" in the popup. */
   onViewDetails?: (id: string) => void;
+  /** Extra action rendered in the popup (e.g. the pipeline control). */
+  renderAction?: (id: string) => ReactNode;
   height?: string;
   className?: string;
   /** false renders a static, non-interactive map (teasers, mini-maps). */

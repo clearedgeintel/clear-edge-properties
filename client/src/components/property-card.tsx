@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CalculationBreakdown } from "./calculation-breakdown";
-import { AddToPipelineButton } from "./add-to-pipeline-button";
+import { DealControl } from "./deal-control";
 import { PropertyImageFallback } from "./states";
 import { Lock, MapPin } from "lucide-react";
 import type { Property } from "@shared/schema";
@@ -137,7 +137,7 @@ export function PropertyCard({ property, isBlurred = false, onClick }: PropertyC
         </div>
 
         <div onClick={(e) => e.stopPropagation()}>
-          <AddToPipelineButton property={property} variant="outline" size="sm" className="w-full" />
+          <DealControl zpid={property.zpid} source={{ zpid: property.zpid }} block listingUrl={property.url} />
         </div>
       </CardContent>
     </Card>

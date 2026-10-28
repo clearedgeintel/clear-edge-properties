@@ -21,6 +21,7 @@ import {
 import { formatCurrency, formatHomeType } from "@/lib/format";
 import { PropertyMap, propertyToMapPoint } from "@/components/property-map";
 import { PropertyDrawer } from "@/components/property-drawer";
+import { DealControl } from "@/components/deal-control";
 import { EmptyState, PageHeader } from "@/components/states";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MapPin, Lock } from "lucide-react";
@@ -351,6 +352,9 @@ export default function Dashboard() {
                 selectedId={mapSelectedId}
                 onSelect={setMapSelectedId}
                 onViewDetails={(id) => setDrawerProperty(properties?.find((p) => p.zpid === id) ?? null)}
+                renderAction={(id) => (
+                  <DealControl zpid={id} source={{ zpid: id }} block listingUrl={properties?.find((p) => p.zpid === id)?.url} />
+                )}
                 height="380px"
               />
             )}
