@@ -1,4 +1,4 @@
-# RealDealTracker - Real Estate Investment Platform
+# ClearEdge Props — Real Estate Investment Platform
 
 A real estate investment platform with AI-powered property scoring, multi-platform property search, deal pipeline management, and subscription-based access.
 
@@ -34,7 +34,7 @@ A real estate investment platform with AI-powered property scoring, multi-platfo
 - **React Hook Form** + **Zod** for validation
 - **Wouter** for routing
 - **Recharts** for data visualization
-- **Leaflet** for maps
+- **Mapbox GL JS** (via `react-map-gl`) for property maps
 - **jsPDF** + **html2canvas** for PDF export
 
 ### Backend
@@ -79,13 +79,14 @@ shared/
 - **PostgreSQL** database (Neon, Railway, or local)
 - **Supabase** project (for authentication)
 - **Stripe** account (for subscriptions)
+- **Mapbox** account (for maps) — see [Maps](#maps)
 
 ### Local Development
 
 ```bash
 # Clone and install
 git clone <repo-url>
-cd RealDealTracker
+cd clear-edge-properties
 npm install
 
 # Configure environment
@@ -117,6 +118,32 @@ docker-compose up
 4. Railway auto-deploys on push to `main`
 
 The app uses a multi-stage Dockerfile -- Railway will detect and build it automatically.
+
+## Maps
+
+All maps (Browse, Dashboard, Property Search results, the property drawer and the
+landing-page teaser) use Mapbox GL JS.
+
+- Set `VITE_MAPBOX_ACCESS_TOKEN` to a **public** Mapbox token (`pk.*`). Create one at
+  <https://account.mapbox.com/access-tokens/> and add URL restrictions for your
+  domains. It's a build-time variable, so set it before `npm run build`.
+- Without a token the app still works: in-app maps show a "Map unavailable"
+  placeholder and the landing page falls back to a static illustration.
+- Styles: `mapbox://styles/mapbox/light-v11` for data maps, `streets-v12` for the
+  single-property location map.
+- mapbox-gl is lazy-loaded, so pages without a map don't download it.
+- Keep the Mapbox attribution control visible (required by Mapbox's terms).
+
+## Security headers & CORS
+
+`helmet` sets security headers on every response. A Content-Security-Policy is
+enforced in production only (Vite's dev server needs inline scripts and an HMR
+websocket). If you add a new third-party script, API or frame source, add it to
+the CSP directives in `server/index.ts`.
+
+`/api` is same-origin only by default. To allow browser calls from other origins,
+set `ALLOWED_ORIGINS` to a comma-separated list, e.g.
+`ALLOWED_ORIGINS=https://app.example.com,https://partner.example.com`.
 
 ## Scripts
 

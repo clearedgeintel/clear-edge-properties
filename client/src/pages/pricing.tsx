@@ -3,6 +3,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Check, Star } from "lucide-react";
+import { Link } from "wouter";
+import { EmptyState, ErrorState } from "@/components/states";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // Local shape: subscription packages are no longer part of @shared/schema.
 type SubscriptionPackage = {
@@ -15,17 +18,9 @@ type SubscriptionPackage = {
 };
 
 export default function Pricing() {
-  const { data: packages, isLoading } = useQuery<SubscriptionPackage[]>({
+  const { data: packages, isLoading, isError, refetch } = useQuery<SubscriptionPackage[]>({
     queryKey: ["/api/subscription-packages"],
   });
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
 
   const formatPackageData = (features: unknown) => {
     if (typeof features === 'object' && features !== null) {
@@ -58,34 +53,44 @@ export default function Pricing() {
   const isPopular = (tier: string) => tier === "pro";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800 py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-b from-brand-light/60 to-slate-50 py-16 px-4">
       <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
-            Choose Your Plan
+        <div className="text-center mb-14">
+          <p className="text-sm font-semibold uppercase tracking-wider text-brand-orange">Pricing</p>
+          <h1 className="mt-2 text-4xl font-bold tracking-tight text-brand-navy">
+            Choose your plan
           </h1>
-          <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
-            Unlock powerful real estate investment tools and insights to accelerate your portfolio growth
+          <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto">
+            Scored listings, map exploration, AI underwriting and a deal pipeline — sized to how you invest.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+        {isError ? (
+          <ErrorState className="mx-auto max-w-lg" onRetry={() => refetch()} description="We couldn't load plans. Try again in a moment." />
+        ) : isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-[480px] rounded-xl" />
+            ))}
+          </div>
+        ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 items-start">
           {packages?.map((pkg) => {
             const packageData = formatPackageData(pkg.features);
             const popular = isPopular(pkg.tier);
 
             return (
-              <Card 
-                key={pkg.id} 
-                className={`relative transition-all duration-300 hover:shadow-xl ${
-                  popular 
-                    ? "border-blue-500 shadow-lg scale-105" 
-                    : "border-gray-200 dark:border-gray-700 hover:border-blue-300"
+              <Card
+                key={pkg.id}
+                className={`relative bg-white transition-all duration-300 hover:shadow-xl ${
+                  popular
+                    ? "border-2 border-brand-blue shadow-lg shadow-brand-blue/10 lg:-mt-4"
+                    : "border-border shadow-sm hover:border-brand-blue/30"
                 }`}
               >
                 {popular && (
                   <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                    <Badge className="bg-blue-500 text-white px-4 py-1 rounded-full">
+                    <Badge className="bg-brand-orange hover:bg-brand-orange text-white px-4 py-1 rounded-full border-0 shadow-sm">
                       <Star className="w-4 h-4 mr-1" />
                       Most Popular
                     </Badge>
@@ -93,14 +98,14 @@ export default function Pricing() {
                 )}
 
                 <CardHeader className="text-center pb-4">
-                  <CardTitle className="text-2xl font-bold text-gray-900 dark:text-white">
+                  <CardTitle className="text-2xl font-bold text-brand-navy">
                     {pkg.name}
                   </CardTitle>
                   <div className="mt-4">
-                    <span className="text-4xl font-extrabold text-gray-900 dark:text-white">
+                    <span className="text-4xl font-extrabold text-brand-navy">
                       ${pkg.price}
                     </span>
-                    <span className="text-gray-600 dark:text-gray-400">
+                    <span className="text-slate-500">
                       /{pkg.billingInterval}
                     </span>
                   </div>
@@ -108,11 +113,11 @@ export default function Pricing() {
 
                 <CardContent className="space-y-6">
                   <div>
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Features</h4>
+                    <h4 className="font-semibold text-brand-navy mb-3">Features</h4>
                     <ul className="space-y-2">
                       {packageData.featureList.map((feature: string, index: number) => (
-                        <li key={index} className="flex items-center text-sm text-gray-600 dark:text-gray-300">
-                          <Check className="w-4 h-4 text-green-500 mr-2 flex-shrink-0" />
+                        <li key={index} className="flex items-center text-sm text-slate-600">
+                          <Check className="w-4 h-4 text-score-high mr-2 flex-shrink-0" />
                           {feature}
                         </li>
                       ))}
@@ -120,8 +125,8 @@ export default function Pricing() {
                   </div>
 
                   <div>
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Usage Limits</h4>
-                    <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                    <h4 className="font-semibold text-brand-navy mb-3">Usage Limits</h4>
+                    <div className="space-y-2 text-sm text-slate-600">
                       <div className="flex justify-between">
                         <span>Property Views:</span>
                         <span className="font-medium">{formatLimit(packageData.limits.propertyViews)}</span>
@@ -141,32 +146,32 @@ export default function Pricing() {
                     </div>
                   </div>
 
-                  <Button 
-                    className={`w-full py-3 ${
-                      popular 
-                        ? "bg-blue-600 hover:bg-blue-700 text-white" 
-                        : "bg-gray-900 hover:bg-gray-800 text-white dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100"
-                    }`}
+                  <Button
+                    asChild={pkg.tier !== "free"}
+                    variant={popular ? "cta" : "default"}
+                    className="w-full py-3"
                     disabled={pkg.tier === "free"}
                   >
-                    {pkg.tier === "free" ? "Current Plan" : "Get Started"}
+                    {pkg.tier === "free" ? (
+                      "Included free"
+                    ) : (
+                      <Link href="/subscribe">Get started</Link>
+                    )}
                   </Button>
                 </CardContent>
               </Card>
             );
           })}
         </div>
+        )}
 
-        <div className="text-center mt-12">
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
-            All plans include 7-day free trial • Cancel anytime • No setup fees
-          </p>
-          <div className="flex justify-center space-x-6 text-sm text-gray-500 dark:text-gray-400">
-            <span>✓ Bank-level security</span>
-            <span>✓ 24/7 support</span>
-            <span>✓ Regular updates</span>
-          </div>
-        </div>
+        {!isLoading && !isError && packages?.length === 0 && (
+          <EmptyState className="mx-auto max-w-lg" title="Plans coming soon" description="Pricing isn't published yet. Check back shortly." />
+        )}
+
+        <p className="text-center mt-12 text-sm text-slate-500">
+          Payments are processed securely by Stripe. Change or cancel your plan anytime from your profile.
+        </p>
       </div>
     </div>
   );

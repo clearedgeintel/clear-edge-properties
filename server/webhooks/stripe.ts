@@ -61,8 +61,10 @@ export function setupStripeWebhooks(app: Express) {
           return res.json({ received: true, duplicate: true });
         }
       } catch (error) {
+        // Can't tell whether this is a duplicate. Fail so Stripe retries later
+        // rather than risk double-processing a billing change.
         console.error("Failed to check webhook idempotency:", error);
-        // Fall through and process; a duplicate is safer than dropping the event.
+        return res.status(500).json({ error: "Idempotency check failed" });
       }
 
       try {

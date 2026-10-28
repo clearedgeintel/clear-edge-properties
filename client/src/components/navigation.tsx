@@ -36,7 +36,8 @@ import {
   Sparkles,
   Users,
   Wallet,
-  Bell
+  Bell,
+  ChevronDown
 } from "lucide-react";
 import { AuthModal } from "./auth-modal";
 import { Logo } from "./logo";
@@ -66,54 +67,66 @@ export function Navigation() {
     }
   };
 
-  // Grouped navigation. Core workflow stays top-level; occasional analysis tools
-  // and rarely-touched account/dev pages are tucked into labeled sections so the
-  // sidebar stops being an 18-item flat wall. White-label is demoted into Account
-  // and gated behind an active subscription (the product targets individual
-  // investors, for whom branding is not a primary feature).
+  // Primary workflow stays top-level: the five screens an investor lives in.
+  // Everything else (analysis tools, account/dev pages, white-label, admin) is
+  // kept but tucked into collapsible groups that open automatically when the
+  // current page lives inside them. White-label stays gated behind an active
+  // subscription (the product targets individual investors).
   type NavItem = { href: string; label: string; icon: typeof Home; show: boolean };
-  const navSections: { title?: string; items: NavItem[] }[] = [
+  const navSections: { title?: string; collapsible?: boolean; items: NavItem[] }[] = [
     {
       items: [
         { href: "/", label: "Home", icon: Home, show: !isAuthenticated },
         { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, show: isAuthenticated },
-        { href: "/browse", label: "Browse Properties", icon: Search, show: true },
-        { href: "/property-search", label: "Property Search", icon: Building2, show: isAuthenticated },
-        { href: "/saved-searches", label: "Saved Searches", icon: Bell, show: isAuthenticated },
-        { href: "/deals", label: "My Deals", icon: BarChart3, show: isAuthenticated },
-        { href: "/buyers", label: "Cash Buyers", icon: Wallet, show: isAuthenticated },
+        { href: "/browse", label: "Browse & Map", icon: MapPin, show: true },
+        { href: "/property-search", label: "Property Search", icon: Search, show: isAuthenticated },
+        { href: "/deals", label: "Deals Pipeline", icon: BarChart3, show: isAuthenticated },
         { href: "/portfolio", label: "Portfolio", icon: Briefcase, show: isAuthenticated },
-        { href: "/market-trends", label: "Market Trends", icon: TrendingUp, show: isAuthenticated },
+        { href: "/pricing", label: "Pricing", icon: DollarSign, show: !isAuthenticated },
+        { href: "/#methodology", label: "How It Works", icon: HelpCircle, show: !isAuthenticated },
       ],
     },
     {
       title: "Tools",
+      collapsible: true,
       items: [
+        { href: "/saved-searches", label: "Saved Searches", icon: Bell, show: isAuthenticated },
+        { href: "/market-trends", label: "Market Trends", icon: TrendingUp, show: isAuthenticated },
         { href: "/property-details", label: "Financial Analysis", icon: Table, show: isAuthenticated },
-        { href: "/agent-lookup", label: "Agent Lookup", icon: Users, show: isAuthenticated },
         { href: "/deal-comparison", label: "Compare Deals", icon: GitCompare, show: isAuthenticated },
         { href: "/equity-toolkit", label: "Investment Toolkit", icon: Calculator, show: isAuthenticated },
         { href: "/recommendations", label: "Recommendations", icon: Sparkles, show: isAuthenticated },
+        { href: "/agent-lookup", label: "Agent Lookup", icon: Users, show: isAuthenticated },
+        { href: "/buyers", label: "Cash Buyers", icon: Wallet, show: isAuthenticated },
       ],
     },
     {
       title: "Account",
+      collapsible: true,
       items: [
-        { href: "/pricing", label: "Pricing", icon: DollarSign, show: true },
-        { href: "/#methodology", label: "How It Works", icon: HelpCircle, show: !isAuthenticated },
+        { href: "/profile", label: "Profile Settings", icon: User, show: isAuthenticated },
+        { href: "/pricing", label: "Plans & Pricing", icon: DollarSign, show: isAuthenticated },
         { href: "/usage", label: "Usage Tracking", icon: Activity, show: isAuthenticated },
         { href: "/api-access", label: "API Access", icon: Code, show: isAuthenticated },
         { href: "/api-docs", label: "API Documentation", icon: FileText, show: isAuthenticated },
         { href: "/branding", label: "White-Label Branding", icon: Palette, show: isAuthenticated && hasActiveSubscription },
-        { href: "/profile", label: "Profile Settings", icon: User, show: isAuthenticated },
         { href: "/admin", label: "Admin Panel", icon: Shield, show: isAdmin },
       ],
     },
   ];
 
+  const isItemActive = (href: string) =>
+    location === href || (href !== '/' && !href.includes('#') && location.startsWith(href));
+
   const visibleSections = navSections
     .map(section => ({ ...section, items: section.items.filter(item => item.show) }))
     .filter(section => section.items.length > 0);
+
+  // Explicit toggles win; otherwise a group is open only if it holds the current page.
+  const [sectionToggles, setSectionToggles] = useState<Record<string, boolean>>({});
+  const isSectionOpen = (section: (typeof visibleSections)[number]) =>
+    !section.collapsible ||
+    (sectionToggles[section.title!] ?? section.items.some(item => isItemActive(item.href)));
 
   return (
     <>
@@ -204,14 +217,26 @@ export function Navigation() {
                 className={sectionIndex > 0 ? 'mt-4 pt-4 border-t border-slate-100' : ''}
               >
                 {section.title && (
-                  <p className="px-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    {section.title}
-                  </p>
+                  section.collapsible ? (
+                    <button
+                      type="button"
+                      onClick={() => setSectionToggles(prev => ({ ...prev, [section.title!]: !isSectionOpen(section) }))}
+                      aria-expanded={isSectionOpen(section)}
+                      className="flex w-full items-center justify-between rounded-md px-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-slate-600"
+                    >
+                      {section.title}
+                      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isSectionOpen(section) ? 'rotate-180' : ''}`} />
+                    </button>
+                  ) : (
+                    <p className="px-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      {section.title}
+                    </p>
+                  )
                 )}
-                <div className="space-y-1">
+                <div className={`space-y-1 ${isSectionOpen(section) ? '' : 'hidden'}`}>
                   {section.items.map((item) => {
                     const Icon = item.icon;
-                    const isActive = location === item.href || (item.href !== '/' && location.startsWith(item.href));
+                    const isActive = isItemActive(item.href);
 
                     return (
                       <Link
@@ -219,8 +244,8 @@ export function Navigation() {
                         href={item.href}
                         className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                           isActive
-                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                            : 'text-slate-600 hover:text-slate-800 hover:bg-slate-50'
+                            ? 'bg-brand-light text-brand-blue font-semibold shadow-[inset_3px_0_0_hsl(var(--brand-orange))]'
+                            : 'text-slate-600 hover:text-brand-navy hover:bg-slate-50'
                         }`}
                         onClick={() => setSidebarOpen(false)}
                       >
@@ -245,7 +270,7 @@ export function Navigation() {
                     </span>
                   </div>
                   <div>
-                    <div className="text-sm font-medium text-slate-700">{user?.email}</div>
+                    <div className="max-w-[10.5rem] truncate text-sm font-medium text-slate-700" title={user?.email ?? undefined}>{user?.email}</div>
                     {hasActiveSubscription ? (
                       <div className="text-xs text-green-600 font-medium">Pro Plan</div>
                     ) : (
@@ -275,7 +300,7 @@ export function Navigation() {
                   Sign In
                 </Button>
                 <Link href="/subscribe" className="block">
-                  <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700">
+                  <Button size="sm" variant="cta" className="w-full">
                     Subscribe
                   </Button>
                 </Link>
@@ -294,7 +319,7 @@ export function Navigation() {
                     </span>
                   </div>
                   <div>
-                    <div className="text-sm font-medium text-slate-700">{user?.email}</div>
+                    <div className="max-w-[10.5rem] truncate text-sm font-medium text-slate-700" title={user?.email ?? undefined}>{user?.email}</div>
                     {hasActiveSubscription && (
                       <div className="text-xs text-green-600 font-medium">Pro Plan</div>
                     )}
@@ -322,7 +347,7 @@ export function Navigation() {
                   Sign In
                 </Button>
                 <Link href="/subscribe" className="block">
-                  <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700">
+                  <Button size="sm" variant="cta" className="w-full">
                     Subscribe
                   </Button>
                 </Link>
@@ -345,21 +370,21 @@ export function Navigation() {
         <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 lg:hidden">
           <div className="flex justify-around items-center h-14">
             {[
-              { href: "/dashboard", label: "Home", icon: LayoutDashboard },
-              { href: "/browse", label: "Browse", icon: Search },
-              { href: "/property-search", label: "Search", icon: Building2 },
+              { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+              { href: "/browse", label: "Browse", icon: MapPin },
+              { href: "/property-search", label: "Search", icon: Search },
               { href: "/deals", label: "Deals", icon: BarChart3 },
-              { href: "/profile", label: "Profile", icon: User },
+              { href: "/portfolio", label: "Portfolio", icon: Briefcase },
             ].map((item) => {
               const Icon = item.icon;
-              const isActive = location === item.href;
+              const isActive = isItemActive(item.href);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={`flex flex-col items-center justify-center flex-1 h-full text-xs transition-colors ${
                     isActive
-                      ? "text-blue-600"
+                      ? "text-brand-blue font-semibold"
                       : "text-slate-400 active:text-slate-600"
                   }`}
                 >

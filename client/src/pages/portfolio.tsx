@@ -1,5 +1,4 @@
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +14,6 @@ import {
 } from "recharts";
 import { formatCurrency } from "@/lib/format";
 import { useDeals, isClosedStage } from "@/lib/deals";
-import type { Property } from "@shared/schema";
 import {
   Briefcase,
   TrendingUp,
@@ -24,15 +22,13 @@ import {
   ArrowRight,
   Kanban,
 } from "lucide-react";
+import { ErrorState, PageHeader } from "@/components/states";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Portfolio() {
   // Pipeline deals are backend-persisted now (staged tracked properties).
-  const { staged: deals, stages } = useDeals();
+  const { staged: deals, stages, isLoading, isError, refetch } = useDeals();
   const stageName = (id: string | null) => stages.find((s) => s.id === id)?.name;
-
-  const { data: properties } = useQuery<Property[]>({
-    queryKey: ["/api/properties"],
-  });
 
   const closedDeals = deals.filter((d) => isClosedStage(stageName(d.stageId)));
   const activeDeals = deals.filter((d) => !isClosedStage(stageName(d.stageId)));
@@ -55,12 +51,25 @@ export default function Portfolio() {
   return (
     <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Portfolio</h1>
-          <p className="text-slate-500 mt-1">
-            Track your investments and deal pipeline performance.
-          </p>
-        </div>
+        <PageHeader
+          className="mb-0"
+          title="Portfolio"
+          description="Track your investments and deal pipeline performance."
+        />
+
+        {isError ? (
+          <ErrorState onRetry={refetch} description="We couldn't load your deals. Try again in a moment." />
+        ) : isLoading ? (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 rounded-xl" />
+              ))}
+            </div>
+            <Skeleton className="h-72 rounded-xl" />
+          </div>
+        ) : (
+        <>
 
         {/* Summary Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -69,7 +78,7 @@ export default function Portfolio() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-500">Closed Deals</p>
-                  <p className="text-2xl font-bold">{closedDeals.length}</p>
+                  <p className="text-2xl font-bold tracking-tight text-brand-navy tabular-nums">{closedDeals.length}</p>
                 </div>
                 <Briefcase className="h-8 w-8 text-green-400" />
               </div>
@@ -80,7 +89,7 @@ export default function Portfolio() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-500">Total Invested</p>
-                  <p className="text-2xl font-bold">
+                  <p className="text-2xl font-bold tracking-tight text-brand-navy tabular-nums">
                     {totalInvested > 0 ? formatCurrency(totalInvested) : "$0"}
                   </p>
                 </div>
@@ -93,7 +102,7 @@ export default function Portfolio() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-500">Active Pipeline</p>
-                  <p className="text-2xl font-bold">
+                  <p className="text-2xl font-bold tracking-tight text-brand-navy tabular-nums">
                     {activePipelineValue > 0 ? formatCurrency(activePipelineValue) : "$0"}
                   </p>
                 </div>
@@ -106,7 +115,7 @@ export default function Portfolio() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-500">Avg Score (Closed)</p>
-                  <p className="text-2xl font-bold">{avgScore || "—"}</p>
+                  <p className="text-2xl font-bold tracking-tight text-brand-navy tabular-nums">{avgScore || "—"}</p>
                 </div>
                 <Building className="h-8 w-8 text-purple-400" />
               </div>
@@ -235,6 +244,8 @@ export default function Portfolio() {
             )}
           </CardContent>
         </Card>
+        </>
+        )}
       </div>
     </div>
   );

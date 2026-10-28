@@ -18,10 +18,15 @@ import {
   X,
   User,
 } from "lucide-react";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatHomeType } from "@/lib/format";
+import { PropertyMap, propertyToMapPoint } from "@/components/property-map";
+import { PropertyDrawer } from "@/components/property-drawer";
+import { EmptyState, PageHeader } from "@/components/states";
+import { Skeleton } from "@/components/ui/skeleton";
+import { MapPin, Lock } from "lucide-react";
 import { useDeals, type PipelineDeal } from "@/lib/deals";
 import type { Property, UserProperty, User as DbUser, Tenant } from "@shared/schema";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 const CHECKLIST_DISMISSED_KEY = "clearedge_checklist_dismissed";
 
@@ -59,19 +64,21 @@ export default function Dashboard() {
     queryKey: ["/api/watchlist"],
   });
 
-  const { data: properties } = useQuery<Property[]>({
-    queryKey: ["/api/properties"],
+  // Server-sorted top opportunities feed both the map and the table.
+  const {
+    data: properties,
+    isLoading: propertiesLoading,
+    isError: propertiesError,
+    refetch: refetchProperties,
+  } = useQuery<Property[]>({
+    queryKey: ["/api/properties", { sortBy: "score-desc", limit: 25 }],
   });
+  const [drawerProperty, setDrawerProperty] = useState<Property | null>(null);
+  const [mapSelectedId, setMapSelectedId] = useState<string | null>(null);
+  const mapPoints = useMemo(() => (properties ?? []).map(propertyToMapPoint), [properties]);
 
-  const topProperties = properties
-    ? [...properties]
-        .sort(
-          (a, b) =>
-            Number(b.investmentScorePercent ?? 0) -
-            Number(a.investmentScorePercent ?? 0)
-        )
-        .slice(0, 5)
-    : undefined;
+  const topProperties = properties?.slice(0, 5);
+  const bestScore = properties?.length ? Math.round(Number(properties[0].investmentScorePercent ?? 0)) : null;
 
   const dealsByStage = stages.map((stage) => ({
     id: stage.id,
@@ -85,15 +92,25 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">
-            Welcome back{displayName ? `, ${displayName}` : ""}
-          </h1>
-          <p className="text-slate-500 mt-1">
-            Here's what's happening with your deals and properties.
-          </p>
-        </div>
+        <PageHeader
+          className="mb-0"
+          title={`Welcome back${displayName ? `, ${displayName}` : ""}`}
+          description="Here's what's happening with your deals and properties."
+          actions={
+            <>
+              <Button variant="outline" asChild>
+                <Link href="/property-search">
+                  <Search className="mr-1.5 h-4 w-4" /> Search
+                </Link>
+              </Button>
+              <Button asChild>
+                <Link href="/browse">
+                  <MapPin className="mr-1.5 h-4 w-4" /> Browse & map
+                </Link>
+              </Button>
+            </>
+          }
+        />
 
         {/* Getting Started Checklist */}
         {!checklistDismissed && (() => {
@@ -102,7 +119,7 @@ export default function Dashboard() {
           const total = CHECKLIST_ITEMS.length;
           if (completed >= total) return null;
           return (
-            <Card className="border-blue-200 bg-blue-50/50">
+            <Card className="border-brand-blue/20 bg-brand-light/60 shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-lg">Getting Started</CardTitle>
                 <Button
@@ -121,9 +138,9 @@ export default function Dashboard() {
                   <div className="flex justify-between text-sm text-slate-500 mb-1">
                     <span>{completed} of {total} complete</span>
                   </div>
-                  <div className="h-2 bg-blue-100 rounded-full overflow-hidden">
+                  <div className="h-2 bg-white rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-blue-500 rounded-full transition-all"
+                      className="h-full bg-brand-blue rounded-full transition-all"
                       style={{ width: `${(completed / total) * 100}%` }}
                     />
                   </div>
@@ -133,7 +150,7 @@ export default function Dashboard() {
                     const done = item.check(ctx);
                     return (
                       <Link key={item.id} href={item.href}>
-                        <div className={`flex items-center gap-3 p-2 rounded-lg text-sm transition-colors ${done ? "text-slate-400" : "hover:bg-blue-100 text-slate-700 cursor-pointer"}`}>
+                        <div className={`flex items-center gap-3 p-2 rounded-lg text-sm transition-colors ${done ? "text-slate-400" : "hover:bg-white text-slate-700 cursor-pointer"}`}>
                           {done ? (
                             <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
                           ) : (
@@ -150,34 +167,6 @@ export default function Dashboard() {
           );
         })()}
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Link href="/property-search">
-            <Button variant="outline" className="w-full h-auto py-3 flex flex-col gap-1">
-              <Search className="h-5 w-5" />
-              <span className="text-xs">Search</span>
-            </Button>
-          </Link>
-          <Link href="/browse">
-            <Button variant="outline" className="w-full h-auto py-3 flex flex-col gap-1">
-              <Building className="h-5 w-5" />
-              <span className="text-xs">Browse</span>
-            </Button>
-          </Link>
-          <Link href="/deals">
-            <Button variant="outline" className="w-full h-auto py-3 flex flex-col gap-1">
-              <Kanban className="h-5 w-5" />
-              <span className="text-xs">Deals</span>
-            </Button>
-          </Link>
-          <Link href="/deal-comparison">
-            <Button variant="outline" className="w-full h-auto py-3 flex flex-col gap-1">
-              <TrendingUp className="h-5 w-5" />
-              <span className="text-xs">Compare</span>
-            </Button>
-          </Link>
-        </div>
-
         {/* Stats Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
@@ -185,9 +174,9 @@ export default function Dashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-500">Watchlist</p>
-                  <p className="text-2xl font-bold">{watchlist?.length ?? 0}</p>
+                  <p className="text-2xl font-bold tracking-tight text-brand-navy tabular-nums">{watchlist?.length ?? 0}</p>
                 </div>
-                <Heart className="h-8 w-8 text-red-400" />
+                <Heart className="h-8 w-8 text-brand-orange/60" />
               </div>
             </CardContent>
           </Card>
@@ -196,9 +185,9 @@ export default function Dashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-500">Active Deals</p>
-                  <p className="text-2xl font-bold">{deals.length}</p>
+                  <p className="text-2xl font-bold tracking-tight text-brand-navy tabular-nums">{deals.length}</p>
                 </div>
-                <Kanban className="h-8 w-8 text-blue-400" />
+                <Kanban className="h-8 w-8 text-brand-blue/50" />
               </div>
             </CardContent>
           </Card>
@@ -207,11 +196,11 @@ export default function Dashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-500">Pipeline Value</p>
-                  <p className="text-2xl font-bold">
+                  <p className="text-2xl font-bold tracking-tight text-brand-navy tabular-nums">
                     {totalPipelineValue > 0 ? formatCurrency(totalPipelineValue) : "$0"}
                   </p>
                 </div>
-                <TrendingUp className="h-8 w-8 text-green-400" />
+                <TrendingUp className="h-8 w-8 text-score-high/70" />
               </div>
             </CardContent>
           </Card>
@@ -219,10 +208,10 @@ export default function Dashboard() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-slate-500">Properties</p>
-                  <p className="text-2xl font-bold">{properties?.length ?? 0}</p>
+                  <p className="text-sm text-slate-500">Top Score Available</p>
+                  <p className="text-2xl font-bold tracking-tight text-brand-navy tabular-nums">{bestScore ?? "—"}</p>
                 </div>
-                <Building className="h-8 w-8 text-purple-400" />
+                <Building className="h-8 w-8 text-brand-navy/40" />
               </div>
             </CardContent>
           </Card>
@@ -327,6 +316,47 @@ export default function Dashboard() {
           </Card>
         </div>
 
+        {/* Opportunity map */}
+        <Card className="overflow-hidden shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <div>
+              <CardTitle className="text-lg">Opportunity Map</CardTitle>
+              <p className="mt-0.5 text-sm text-slate-500">Your 25 highest-scoring listings</p>
+            </div>
+            <Link href="/browse">
+              <Button variant="ghost" size="sm">
+                Open map <ArrowRight className="ml-1 h-4 w-4" />
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent className="p-0">
+            {propertiesLoading ? (
+              <Skeleton className="h-[380px] w-full rounded-none" />
+            ) : propertiesError ? (
+              <EmptyState
+                icon={Lock}
+                className="m-4 border-solid"
+                title="Listings unavailable"
+                description="Scored listings need an active subscription. If you're subscribed, try again."
+                action={
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => refetchProperties()}>Try again</Button>
+                    <Button variant="cta" size="sm" asChild><Link href="/pricing">View plans</Link></Button>
+                  </div>
+                }
+              />
+            ) : (
+              <PropertyMap
+                points={mapPoints}
+                selectedId={mapSelectedId}
+                onSelect={setMapSelectedId}
+                onViewDetails={(id) => setDrawerProperty(properties?.find((p) => p.zpid === id) ?? null)}
+                height="380px"
+              />
+            )}
+          </CardContent>
+        </Card>
+
         {/* Top Scored Properties */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -378,14 +408,12 @@ export default function Dashboard() {
                           <ScoreBadge investmentScorePercent={Math.round(Number(property.investmentScorePercent ?? 0))} />
                         </td>
                         <td className="py-2 hidden sm:table-cell text-slate-500">
-                          {property.homeType}
+                          {formatHomeType(property.homeType)}
                         </td>
                         <td className="py-2">
-                          <Link href="/browse">
-                            <Button variant="ghost" size="sm">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </Link>
+                          <Button variant="ghost" size="sm" aria-label="View details" onClick={() => setDrawerProperty(property)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -396,6 +424,12 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <PropertyDrawer
+        property={drawerProperty}
+        open={drawerProperty !== null}
+        onOpenChange={(open) => !open && setDrawerProperty(null)}
+      />
     </div>
   );
 }

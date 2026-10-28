@@ -3,9 +3,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CalculationBreakdown } from "./calculation-breakdown";
 import { AddToPipelineButton } from "./add-to-pipeline-button";
-import { Camera } from "lucide-react";
+import { PropertyImageFallback } from "./states";
+import { Lock, MapPin } from "lucide-react";
 import type { Property } from "@shared/schema";
-import { formatPrice } from "@/lib/format";
+import { formatCurrency, formatHomeType, formatPrice } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 interface PropertyCardProps {
   property: Property;
@@ -13,127 +15,129 @@ interface PropertyCardProps {
   onClick?: () => void;
 }
 
-const STOCK_IMAGE =
-  "https://images.unsplash.com/photo-1605146769289-440113cc3d00?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600";
+const NEW_LISTING_MS = 3 * 24 * 60 * 60 * 1000;
+
+const num = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+function Stat({ label, value, tone }: { label: string; value: string; tone?: "positive" | "negative" }) {
+  return (
+    <div className="min-w-0 rounded-lg bg-slate-50 px-2.5 py-2">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p
+        className={cn(
+          "truncate text-sm font-semibold tabular-nums text-foreground",
+          tone === "positive" && "text-emerald-700",
+          tone === "negative" && "text-red-600",
+        )}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
 
 export function PropertyCard({ property, isBlurred = false, onClick }: PropertyCardProps) {
   const [imageError, setImageError] = useState(false);
+  const hasImage = Boolean(property.imgMain) && !imageError;
 
-  // New shape exposes a single main image; galleries derive from [imgMain].
-  const images = [property.imgMain].filter(Boolean) as string[];
-  const hasImages = images.length > 0;
-  const isUsingStockImages = !hasImages || Boolean(images[0]?.includes("unsplash.com"));
+  const beds = num(property.numBeds);
+  const baths = num(property.numBaths);
+  const sqft = num(property.sizeSqFt ?? property.livingAreaSqFt);
+  const capRate = num(property.capRatePercent);
+  const cashFlow = num(property.monthlyCashFlow);
+  const coc = num(property.cashOnCashRoi);
+  const isNew = property.createdAt && new Date(property.createdAt).getTime() > Date.now() - NEW_LISTING_MS;
 
-  const getImageSrc = () => {
-    if (hasImages && !imageError) {
-      return images[0];
-    }
-    return STOCK_IMAGE;
-  };
+  const specs = [
+    beds != null && `${beds} bd`,
+    baths != null && `${baths} ba`,
+    sqft != null && sqft > 0 && `${sqft.toLocaleString()} sqft`,
+  ].filter(Boolean);
 
-  const beds = property.numBeds ?? 0;
-  const baths = Number(property.numBaths ?? 0);
-  const sqft = Number(property.sizeSqFt ?? property.livingAreaSqFt ?? 0);
-  const roi = property.cashOnCashRoi;
+  const cityLine = [property.addressCity, property.addressState].filter(Boolean).join(", ");
 
   return (
     <Card
-      className={`overflow-hidden hover:shadow-xl hover:shadow-blue-100/50 transition-all duration-300 cursor-pointer border-0 bg-gradient-to-br from-white to-blue-50/30 ${
-        isBlurred ? 'relative' : ''
-      }`}
+      className="group cursor-pointer overflow-hidden border-border bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand-navy/5"
       onClick={onClick}
     >
-      <div className="relative">
-        <img
-          src={getImageSrc()}
-          alt={property.address ?? "Property"}
-          className="w-full h-48 object-cover"
-          onError={() => setImageError(true)}
-        />
+      <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
+        {hasImage ? (
+          <img
+            src={property.imgMain!}
+            alt={property.address ?? "Property"}
+            loading="lazy"
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+            onError={() => setImageError(true)}
+          />
+        ) : (
+          <PropertyImageFallback />
+        )}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/40 to-transparent" />
 
-        {/* Show indicator when only a stock photo is available */}
-        {(!hasImages || isUsingStockImages) && (
-          <div className="absolute top-3 left-3">
-            <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-xs">
-              Stock Photo
-            </Badge>
+        {/* Single status slot so badges never stack over each other */}
+        {(isNew || property.homeType) && (
+          <div className="absolute left-3 top-3 flex gap-1.5">
+            {isNew && <Badge className="border-0 bg-brand-orange text-white shadow-sm hover:bg-brand-orange">New</Badge>}
+            {property.homeType && (
+              <Badge className="border-0 bg-white/90 text-slate-700 shadow-sm backdrop-blur hover:bg-white/90">
+                {formatHomeType(property.homeType)}
+              </Badge>
+            )}
           </div>
         )}
 
-        <div className="absolute top-3 right-3 flex gap-2">
+        {/* Investment score (opens the calculation breakdown) */}
+        <div className="absolute right-3 top-3" onClick={(e) => e.stopPropagation()}>
           <CalculationBreakdown property={property} />
         </div>
 
-        {property.createdAt && new Date(property.createdAt).getTime() > Date.now() - 3 * 24 * 60 * 60 * 1000 && (
-          <div className="absolute top-3 left-3 mt-10">
-            <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0 shadow-md">
-              New
-            </Badge>
-          </div>
-        )}
-
-        {/* Authentic photo indicator */}
-        {hasImages && !isUsingStockImages && (
-          <div className="absolute bottom-3 left-3">
-            <Badge className="bg-blue-600 text-white border-0 shadow-md text-xs">
-              <Camera className="h-3 w-3 mr-1" />
-              Authentic Photos
-            </Badge>
-          </div>
-        )}
-
         {isBlurred && (
-          <div className="absolute inset-0 bg-white bg-opacity-50 backdrop-blur-sm flex items-center justify-center">
+          <div className="absolute inset-0 flex items-center justify-center bg-white/50 backdrop-blur-sm">
             <div className="text-center">
-              <i className="fas fa-lock text-slate-400 text-3xl mb-2"></i>
-              <p className="text-slate-600 font-medium">Subscribe to View</p>
+              <Lock className="mx-auto mb-2 h-7 w-7 text-brand-navy/60" />
+              <p className="text-sm font-semibold text-brand-navy">Subscribe to view</p>
             </div>
           </div>
         )}
       </div>
 
-      <CardContent className="p-4">
-        <h3 className="font-semibold text-slate-800 mb-1">
-          {isBlurred
-            ? `${property.addressCity ?? ""}, ${property.addressState ?? ""} ${property.addressZip ?? ""}`
-            : property.address}
-        </h3>
-        <p className="text-slate-600 text-sm mb-2">
-          {beds} bed, {baths} bath • {sqft.toLocaleString()} sq ft
-        </p>
-
-        {/* Property source/ID information */}
-        <div className="flex items-center gap-2 mb-2">
-          {property.homeType && (
-            <Badge variant="outline" className="text-xs capitalize">
-              {property.homeType.replace(/_/g, " ").toLowerCase()}
-            </Badge>
-          )}
-          {property.zpid && (
-            <Badge variant="outline" className="text-xs text-blue-700 border-blue-200">
-              ID: {property.zpid}
-            </Badge>
-          )}
-        </div>
-        <div className="flex justify-between items-center mb-3">
-          <p className="text-xl font-bold text-slate-800">
+      <CardContent className="space-y-3 p-4">
+        <div>
+          <p className="text-2xl font-bold leading-tight tracking-tight text-brand-navy tabular-nums">
             {formatPrice(property.price ?? 0)}
           </p>
-          {roi != null && roi !== "" && (
-            <p className="text-sm text-slate-600">
-              Est. ROI: {Number(roi).toFixed(1)}%
-            </p>
-          )}
+          <h3 className="mt-1 truncate text-sm font-semibold text-foreground">
+            {isBlurred ? `${cityLine} ${property.addressZip ?? ""}` : property.address}
+          </h3>
+          <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
+            {!isBlurred && cityLine && (
+              <>
+                <MapPin className="h-3 w-3 shrink-0" />
+                <span className="truncate">{cityLine}</span>
+                {specs.length > 0 && <span className="text-border">|</span>}
+              </>
+            )}
+            {specs.join(" · ")}
+          </p>
         </div>
 
-        {/* Add to Pipeline Button */}
-        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-          <AddToPipelineButton
-            property={property}
-            variant="outline"
-            size="sm"
-            className="w-full"
+        <div className="grid grid-cols-3 gap-2">
+          <Stat label="Cap rate" value={capRate != null ? `${capRate.toFixed(1)}%` : "—"} />
+          <Stat
+            label="Cash flow"
+            value={cashFlow != null ? `${formatCurrency(cashFlow)}` : "—"}
+            tone={cashFlow == null ? undefined : cashFlow >= 0 ? "positive" : "negative"}
           />
+          <Stat label="CoC ROI" value={coc != null ? `${coc.toFixed(1)}%` : "—"} />
+        </div>
+
+        <div onClick={(e) => e.stopPropagation()}>
+          <AddToPipelineButton property={property} variant="outline" size="sm" className="w-full" />
         </div>
       </CardContent>
     </Card>

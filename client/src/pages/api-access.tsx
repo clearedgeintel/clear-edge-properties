@@ -333,7 +333,7 @@ export default function ApiAccess() {
               <div>
                 <h3 className="text-lg font-semibold mb-3">Base URL</h3>
                 <div className="bg-slate-100 p-4 rounded-lg">
-                  <code className="text-sm">https://api.clearedgedeals.com</code>
+                  <code className="text-sm">{window.location.origin}</code>
                 </div>
               </div>
 

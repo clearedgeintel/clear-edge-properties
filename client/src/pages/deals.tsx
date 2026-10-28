@@ -24,11 +24,13 @@ import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
 import { useDeals, type PipelineDeal, type PipelineStage } from "@/lib/deals";
+import { EmptyState, ErrorState, PageHeader } from "@/components/states";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const DEALS_KEY = ["/api/deals"];
 
 export default function DealsPage() {
-  const { stages, staged, unstaged, isLoading } = useDeals();
+  const { stages, staged, unstaged, isLoading, isError, refetch } = useDeals();
   const qc = useQueryClient();
   const { toast } = useToast();
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -69,24 +71,35 @@ export default function DealsPage() {
   const dealsByStage = (stageId: string) => staged.filter((d) => d.stageId === stageId);
 
   return (
-    <div className="p-6 max-w-full overflow-x-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Deal Pipeline</h1>
-          <p className="text-gray-600 mt-1">Track your saved properties through each stage</p>
-        </div>
-        <Button className="flex items-center gap-2" onClick={() => setIsAddOpen(true)}>
-          <Plus className="w-4 h-4" />
-          Add Deal
-        </Button>
-      </div>
+    <div className="min-h-screen max-w-full overflow-x-auto bg-slate-50 p-4 sm:p-6 lg:p-8">
+      <PageHeader
+        title="Deal pipeline"
+        description="Track your saved properties through each stage, from first look to close."
+        actions={
+          <Button className="flex items-center gap-2" onClick={() => setIsAddOpen(true)}>
+            <Plus className="w-4 h-4" />
+            Add deal
+          </Button>
+        }
+      />
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-24 text-slate-500">
-          <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Loading pipeline…
+      {isError ? (
+        <ErrorState onRetry={refetch} description="We couldn't load your pipeline. Try again in a moment." />
+      ) : isLoading ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6" aria-label="Loading pipeline">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="space-y-3">
+              <Skeleton className="h-5 w-2/3" />
+              <Skeleton className="h-28 w-full rounded-xl" />
+              <Skeleton className="h-28 w-full rounded-xl opacity-60" />
+            </div>
+          ))}
         </div>
       ) : stages.length === 0 ? (
-        <Card><CardContent className="py-12 text-center text-slate-500">No pipeline stages configured.</CardContent></Card>
+        <EmptyState
+          title="No pipeline stages yet"
+          description="Pipeline stages are created with your workspace. Contact support if this persists."
+        />
       ) : (
         <DragDropContext onDragEnd={handleDragEnd}>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 min-h-[600px]">

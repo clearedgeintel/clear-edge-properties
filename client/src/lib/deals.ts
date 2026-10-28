@@ -67,5 +67,10 @@ export function useDeals() {
     staged: deals.filter((d) => d.stageId),
     unstaged: deals.filter((d) => !d.stageId),
     isLoading: dealsQuery.isLoading || stagesQuery.isLoading,
+    isError: dealsQuery.isError || stagesQuery.isError,
+    refetch: () => {
+      dealsQuery.refetch();
+      stagesQuery.refetch();
+    },
   };
 }

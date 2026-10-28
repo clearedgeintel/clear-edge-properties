@@ -23,12 +23,17 @@
   --destructive-foreground: hsl(210, 20%, 98%);
   --ring: hsl(215, 100%, 28%);
   --radius: 0.5rem;
-  /* ClearEdge Props brand palette */
-  --brand-blue: hsl(215, 100%, 28%);   /* #003C8F deep blue */
-  --brand-navy: hsl(219, 90%, 23%);    /* #062B6F navy */
-  --brand-orange: hsl(28, 100%, 50%);  /* #FF7900 orange */
-  --brand-light: hsl(217, 100%, 96%);  /* #EAF3FF light blue */
-  --brand-gray: hsl(215, 16%, 47%);    /* #64748B cool gray */
+  /* ClearEdge Props brand palette. Stored as bare HSL triplets so Tailwind
+     opacity modifiers work (e.g. bg-brand-orange/90). */
+  --brand-blue: 215 100% 28%;   /* #003C8F deep blue */
+  --brand-navy: 219 90% 23%;    /* #062B6F navy */
+  --brand-orange: 28 100% 50%;  /* #FF7900 orange */
+  --brand-light: 217 100% 96%;  /* #EAF3FF light blue */
+  --brand-gray: 215 16% 47%;    /* #64748B cool gray */
+  /* Investment score scale, shared by badges, cards and map markers. */
+  --score-high: 160 84% 39%;    /* #10B981 */
+  --score-mid: 38 92% 50%;      /* #F59E0B */
+  --score-low: 0 84% 60%;       /* #EF4444 */
   --chart-1: hsl(215, 100%, 28%);
   --chart-2: hsl(28, 100%, 50%);
   --chart-3: hsl(219, 90%, 23%);
@@ -64,6 +69,11 @@
   --destructive: hsl(0, 62.8%, 30.6%);
   --destructive-foreground: hsl(210, 20%, 98%);
   --ring: hsl(216, 12.2%, 83.9%);
+  --brand-blue: 215 90% 60%;
+  --brand-navy: 219 60% 40%;
+  --brand-orange: 28 100% 55%;
+  --brand-light: 217 50% 16%;
+  --brand-gray: 215 16% 65%;
   --chart-1: hsl(220, 70%, 50%);
   --chart-2: hsl(160, 60%, 45%);
   --chart-3: hsl(30, 80%, 55%);
@@ -147,4 +157,30 @@
 
 .property-drawer-content::-webkit-scrollbar-thumb:hover {
   background: hsl(220, 8.9%, 46.1%);
+}
+
+/* Mapbox popup: card-style chrome to match the app's surfaces. */
+.ce-popup .mapboxgl-popup-content {
+  padding: 0;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 12px 32px -8px rgb(6 43 111 / 0.25), 0 2px 6px rgb(15 23 42 / 0.08);
+}
+
+.ce-popup .mapboxgl-popup-close-button {
+  z-index: 1;
+  top: 6px;
+  left: 6px;
+  right: auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.9);
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.ce-popup .mapboxgl-popup-close-button:hover {
+  background: #ffffff;
 }
