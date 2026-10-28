@@ -1207,6 +1207,7 @@ export type Property = typeof properties.$inferSelect;
 export type PropertyDetail = typeof propertyDetails.$inferSelect;
 export type UserProperty = typeof userProperties.$inferSelect;
 export type PipelineStage = typeof pipelineStages.$inferSelect;
+export type PropertyActivity = typeof propertyActivities.$inferSelect;
 export type WhitelabelBranding = typeof whitelabelBranding.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type ProcessedWebhookEvent = typeof processedWebhookEvents.$inferSelect;

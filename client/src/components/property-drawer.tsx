@@ -299,6 +299,7 @@ export function PropertyDrawer({ property, open, onOpenChange }: PropertyDrawerP
             <DealControl
               zpid={property.zpid}
               source={{ zpid: property.zpid }}
+              origin="property details"
               variant="full"
               listingUrl={property.url}
               className="col-span-3 mb-2"

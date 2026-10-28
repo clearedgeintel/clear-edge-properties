@@ -13,6 +13,7 @@ import {
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { useDealActions, useDeals, type DealSource } from "@/lib/deals";
+import { apiErrorMessage } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
 interface DealControlProps {
@@ -25,6 +26,9 @@ interface DealControlProps {
   className?: string;
   /** Optional link to the source listing, shown in the menu. */
   listingUrl?: string | null;
+  /** Where this add happens, for the deal's activity history. */
+  origin?: string;
+  savedSearchId?: string;
 }
 
 /**
@@ -35,7 +39,16 @@ interface DealControlProps {
  *   saved       → "Saved" ▾ move to a stage
  *   in pipeline → "In: {stage}" ▾ change stage / open in pipeline / remove
  */
-export function DealControl({ zpid, source, variant = "compact", block = false, className, listingUrl }: DealControlProps) {
+export function DealControl({
+  zpid,
+  source,
+  variant = "compact",
+  block = false,
+  className,
+  listingUrl,
+  origin,
+  savedSearchId,
+}: DealControlProps) {
   const { byZpid, stages } = useDeals();
   const { addDeal, setStage, removeDeal } = useDealActions();
   const { toast } = useToast();
@@ -62,7 +75,7 @@ export function DealControl({ zpid, source, variant = "compact", block = false, 
   const fail = (error: unknown) =>
     toast({
       title: "Couldn't update pipeline",
-      description: error instanceof Error ? error.message : "Please try again.",
+      description: apiErrorMessage(error),
       variant: "destructive",
     });
 
@@ -82,7 +95,7 @@ export function DealControl({ zpid, source, variant = "compact", block = false, 
       return;
     }
     addDeal.mutate(
-      { source, stageId },
+      { source, stageId, origin, savedSearchId },
       {
         onSuccess: (created: any) => {
           const name = stages.find((s) => s.id === created?.pipelineStageId)?.name;

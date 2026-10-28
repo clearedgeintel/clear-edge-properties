@@ -137,7 +137,7 @@ export function PropertyCard({ property, isBlurred = false, onClick }: PropertyC
         </div>
 
         <div onClick={(e) => e.stopPropagation()}>
-          <DealControl zpid={property.zpid} source={{ zpid: property.zpid }} block listingUrl={property.url} />
+          <DealControl zpid={property.zpid} source={{ zpid: property.zpid }} origin="browse" block listingUrl={property.url} />
         </div>
       </CardContent>
     </Card>

@@ -6,7 +6,7 @@ import {
   type UnifiedProperty,
 } from "./multi-platform-search";
 import { enrichFirstImports, DEFAULT_ENRICH_SCORE_THRESHOLD } from "./enrichment";
-import { sendAlertEmail, buildMatchAlertHtml, alertsConfigured } from "./alerts";
+import { sendAlertEmail, buildMatchAlertHtml, alertsConfigured, appBaseUrl } from "./alerts";
 import { consoleLogger } from "./console-logger";
 import type { SavedSearch, SavedSearchFilters } from "@shared/schema";
 
@@ -135,6 +135,7 @@ export async function runSavedSearch(search: SavedSearch): Promise<RunResult> {
       const items = matched
         .filter((m) => newByZpid.has(m.zpid))
         .map((m) => ({
+          zpid: m.zpid,
           address: m.p.address?.streetAddress || null,
           city: m.p.address?.city || null,
           state: m.p.address?.state || null,
@@ -144,7 +145,7 @@ export async function runSavedSearch(search: SavedSearch): Promise<RunResult> {
       const sent = await sendAlertEmail({
         to: user.email,
         subject: `${newMatchRows.length} new match${newMatchRows.length === 1 ? "" : "es"}: ${search.searchName}`,
-        html: buildMatchAlertHtml(search.searchName, items),
+        html: buildMatchAlertHtml(search.searchName, items, { baseUrl: appBaseUrl(), savedSearchId: search.id }),
       });
       if (sent) {
         await storage.markMatchesNotified(newMatchRows.map((r) => r.id));

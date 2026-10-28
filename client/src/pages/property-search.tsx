@@ -212,7 +212,7 @@ export default function PropertySearchPage() {
         onViewDetails={openDetails}
         renderAction={(key) => {
           const it = byKey.get(key);
-          return it ? <DealControl zpid={it.zpid} source={it.dealSource} block listingUrl={it.view.listingUrl} /> : null;
+          return it ? <DealControl zpid={it.zpid} source={it.dealSource} origin="search map" block listingUrl={it.view.listingUrl} /> : null;
         }}
         height="100%"
       />

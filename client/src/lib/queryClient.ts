@@ -85,3 +85,17 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+/** Readable message from an apiRequest error ("409: {\"error\":\"…\"}" → "…"). */
+export function apiErrorMessage(error: unknown, fallback = "Something went wrong. Please try again."): string {
+  if (!(error instanceof Error)) return fallback;
+  const body = error.message.replace(/^\d{3}:\s*/, "");
+  try {
+    const parsed = JSON.parse(body);
+    if (typeof parsed?.error === "string") return parsed.error;
+    if (typeof parsed?.message === "string") return parsed.message;
+  } catch {
+    // not JSON
+  }
+  return body || fallback;
+}

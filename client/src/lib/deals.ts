@@ -45,7 +45,7 @@ export interface PipelineDeal {
 // Timestamps come back as "YYYY-MM-DD HH:MM:SS" with no zone, but they're UTC
 // (now() on a timestamp column). Without a zone the browser parses them as
 // local time, so "updated just now" rendered as "in about 5 hours".
-function asUtc(ts: string | null | undefined): string | null {
+export function asUtc(ts: string | null | undefined): string | null {
   if (!ts) return null;
   return /[zZ]|[+-]\d{2}:?\d{2}$/.test(ts) ? ts : `${ts.replace(" ", "T")}Z`;
 }
@@ -123,18 +123,26 @@ export type DealSource = { zpid: string } | { result: DealSearchResult; searchMa
 export interface AddDealInput {
   source: DealSource;
   stageId?: string | null;
+  /** Recorded in the deal's activity history (e.g. "browse", "map"). */
+  origin?: string;
+  savedSearchId?: string;
 }
+
+/** Matches /api/deals, /api/deals/:id/activities, etc. */
+const isDealsQuery = (q: { queryKey: readonly unknown[] }) => String(q.queryKey[0]).startsWith("/api/deals");
+
+export { isDealsQuery };
 
 export function useDealActions() {
   const qc = useQueryClient();
   const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["/api/deals"] });
+    qc.invalidateQueries({ predicate: isDealsQuery });
     qc.invalidateQueries({ queryKey: ["/api/watchlist"] });
   };
 
   const addDeal = useMutation({
-    mutationFn: async ({ source, stageId }: AddDealInput) => {
-      const body: Record<string, unknown> = { ...source };
+    mutationFn: async ({ source, stageId, origin, savedSearchId }: AddDealInput) => {
+      const body: Record<string, unknown> = { ...source, origin, savedSearchId };
       if (stageId !== undefined) body.pipelineStageId = stageId;
       return (await apiRequest("POST", "/api/deals", body)).json();
     },

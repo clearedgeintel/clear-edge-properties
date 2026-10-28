@@ -353,7 +353,7 @@ export default function Dashboard() {
                 onSelect={setMapSelectedId}
                 onViewDetails={(id) => setDrawerProperty(properties?.find((p) => p.zpid === id) ?? null)}
                 renderAction={(id) => (
-                  <DealControl zpid={id} source={{ zpid: id }} block listingUrl={properties?.find((p) => p.zpid === id)?.url} />
+                  <DealControl zpid={id} source={{ zpid: id }} origin="dashboard map" block listingUrl={properties?.find((p) => p.zpid === id)?.url} />
                 )}
                 height="380px"
               />
