@@ -1,10 +1,14 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautiful-dnd";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MoreVertical, FileText, Trash2, Calendar, DollarSign, Home, Loader2, Upload, Download } from "lucide-react";
+import {
+  Plus, MoreVertical, FileText, Trash2, Calendar, Loader2, Upload, Download, ExternalLink, Eye, MapPin, Search,
+  Bookmark, BookmarkX,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
   Dialog,
@@ -23,8 +27,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
-import { useDeals, type PipelineDeal, type PipelineStage } from "@/lib/deals";
-import { EmptyState, ErrorState, PageHeader } from "@/components/states";
+import { useDealActions, useDeals, type PipelineDeal, type PipelineStage } from "@/lib/deals";
+import { EmptyState, ErrorState, PageHeader, PropertyImageFallback } from "@/components/states";
+import { ScoreBadge } from "@/components/score-badge";
+import { PropertyDrawer } from "@/components/property-drawer";
+import { platformInfo } from "@/components/search/platforms";
+import type { Property } from "@shared/schema";
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const DEALS_KEY = ["/api/deals"];
@@ -36,6 +45,22 @@ export default function DealsPage() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [notesDeal, setNotesDeal] = useState<PipelineDeal | null>(null);
   const [selectedDeal, setSelectedDeal] = useState<PipelineDeal | null>(null);
+  const [drawerProperty, setDrawerProperty] = useState<Property | null>(null);
+
+  // Deep link from "View pipeline" (/deals?deal=<id>): scroll to and briefly
+  // highlight the card once deals have loaded.
+  const [highlightId, setHighlightId] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get("deal"),
+  );
+  useEffect(() => {
+    if (!highlightId || isLoading) return;
+    const el = document.querySelector(`[data-deal-id="${highlightId}"]`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const t = setTimeout(() => setHighlightId(null), 2500);
+    return () => clearTimeout(t);
+  }, [highlightId, isLoading]);
+
+  const viewProperty = (deal: PipelineDeal) => deal.property && setDrawerProperty(deal.property);
 
   // All board mutations are PATCH /api/deals/:id (user_properties). Optimistic so
   // drag-and-drop feels instant; rolls back on error.
@@ -74,12 +99,19 @@ export default function DealsPage() {
     <div className="min-h-screen max-w-full overflow-x-auto bg-slate-50 p-4 sm:p-6 lg:p-8">
       <PageHeader
         title="Deal pipeline"
-        description="Track your saved properties through each stage, from first look to close."
+        description="Track properties from first look to close. Add them from Search or Browse in one click."
         actions={
-          <Button className="flex items-center gap-2" onClick={() => setIsAddOpen(true)}>
-            <Plus className="w-4 h-4" />
-            Add deal
-          </Button>
+          <>
+            <Button variant="outline" asChild>
+              <Link href="/property-search">
+                <Search className="mr-1.5 h-4 w-4" /> Find deals
+              </Link>
+            </Button>
+            <Button className="flex items-center gap-2" onClick={() => setIsAddOpen(true)}>
+              <Plus className="w-4 h-4" />
+              Add deal
+            </Button>
+          </>
         }
       />
 
@@ -101,6 +133,29 @@ export default function DealsPage() {
           description="Pipeline stages are created with your workspace. Contact support if this persists."
         />
       ) : (
+        <>
+        {staged.length === 0 && (
+          <EmptyState
+            className="mb-6 border-solid py-10"
+            icon={Search}
+            title={unstaged.length ? "Nothing on the board yet" : "Your pipeline is empty"}
+            description={
+              unstaged.length
+                ? "Move a saved property onto the board below, or find new deals."
+                : "Add properties from Search or Browse — they land here in your first stage."
+            }
+            action={
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button variant="cta" asChild>
+                  <Link href="/property-search"><Search className="mr-1.5 h-4 w-4" /> Search properties</Link>
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link href="/browse"><MapPin className="mr-1.5 h-4 w-4" /> Browse & map</Link>
+                </Button>
+              </div>
+            }
+          />
+        )}
         <DragDropContext onDragEnd={handleDragEnd}>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 min-h-[600px]">
             {stages.map((stage) => (
@@ -138,7 +193,9 @@ export default function DealsPage() {
                             >
                               <DealCard
                                 deal={deal}
+                                highlighted={highlightId === deal.id}
                                 onClick={setSelectedDeal}
+                                onViewProperty={viewProperty}
                                 onEditNotes={setNotesDeal}
                                 onRemove={(id) => {
                                   move(id, null);
@@ -157,6 +214,18 @@ export default function DealsPage() {
             ))}
           </div>
         </DragDropContext>
+
+        <SavedSection
+          deals={unstaged}
+          stages={stages}
+          highlightId={highlightId}
+          onMove={(deal, stageId) => {
+            move(deal.id, stageId);
+            toast({ title: `Added to ${stages.find((s) => s.id === stageId)?.name ?? "pipeline"}` });
+          }}
+          onView={viewProperty}
+        />
+        </>
       )}
 
       <AddDealDialog
@@ -184,9 +253,24 @@ export default function DealsPage() {
       <Dialog open={!!selectedDeal} onOpenChange={() => setSelectedDeal(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle>Deal Details</DialogTitle></DialogHeader>
-          {selectedDeal && <DealDetails deal={selectedDeal} stages={stages} />}
+          {selectedDeal && (
+            <DealDetails
+              deal={selectedDeal}
+              stages={stages}
+              onViewProperty={(d) => {
+                setSelectedDeal(null);
+                viewProperty(d);
+              }}
+            />
+          )}
         </DialogContent>
       </Dialog>
+
+      <PropertyDrawer
+        property={drawerProperty}
+        open={drawerProperty !== null}
+        onOpenChange={(o) => !o && setDrawerProperty(null)}
+      />
     </div>
   );
 }
@@ -197,33 +281,84 @@ function scoreBadgeColor(score: number) {
   return "bg-red-100 text-red-800";
 }
 
+function PlatformChip({ platform }: { platform: string }) {
+  const info = platformInfo(platform);
+  return (
+    <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-semibold shadow-sm", info.badgeClass)}>
+      {info.shortName}
+    </span>
+  );
+}
+
+function DealThumb({ deal, className }: { deal: PipelineDeal; className?: string }) {
+  const [error, setError] = useState(false);
+  return (
+    <div className={cn("overflow-hidden bg-slate-100", className)}>
+      {deal.image && !error ? (
+        <img src={deal.image} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => setError(true)} />
+      ) : (
+        <PropertyImageFallback compact />
+      )}
+    </div>
+  );
+}
+
 function DealCard({
   deal,
+  highlighted,
   onClick,
+  onViewProperty,
   onEditNotes,
   onRemove,
 }: {
   deal: PipelineDeal;
+  highlighted?: boolean;
   onClick: (d: PipelineDeal) => void;
+  onViewProperty: (d: PipelineDeal) => void;
   onEditNotes: (d: PipelineDeal) => void;
   onRemove: (id: string) => void;
 }) {
   return (
-    <Card className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-white" onClick={() => onClick(deal)}>
-      <CardHeader className="pb-2 px-3 pt-3">
+    <Card
+      data-deal-id={deal.id}
+      className={cn(
+        "cursor-grab overflow-hidden bg-white transition-all hover:shadow-md active:cursor-grabbing",
+        highlighted && "ring-2 ring-brand-orange ring-offset-2 animate-pulse",
+      )}
+      onClick={() => onClick(deal)}
+    >
+      <div className="relative">
+        <DealThumb deal={deal} className="h-24 w-full" />
+        <div className="absolute left-2 top-2"><PlatformChip platform={deal.platform} /></div>
+        {deal.score > 0 && (
+          <div className="absolute right-2 top-2"><ScoreBadge investmentScorePercent={deal.score} size="sm" /></div>
+        )}
+      </div>
+      <CardHeader className="pb-1.5 px-3 pt-2.5">
         <div className="flex items-start justify-between gap-1">
           <div className="flex-1 min-w-0">
-            <CardTitle className="text-sm font-medium text-gray-900 truncate">{deal.title}</CardTitle>
-            <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
-              <Home className="w-3 h-3 flex-shrink-0" />
-              <span className="truncate">{deal.address}</span>
+            <p className="text-base font-bold tabular-nums text-brand-navy">
+              {deal.price ? `$${deal.price.toLocaleString()}` : "Contact for price"}
             </p>
+            <CardTitle className="truncate text-xs font-medium text-slate-700" title={deal.title}>{deal.title}</CardTitle>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0"><MoreVertical className="w-4 h-4" /></Button>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="Deal actions"><MoreVertical className="w-4 h-4" /></Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              {deal.property && (
+                <DropdownMenuItem onClick={() => onViewProperty(deal)}>
+                  <Eye className="w-4 h-4 mr-2" /> View property
+                </DropdownMenuItem>
+              )}
+              {deal.url && (
+                <DropdownMenuItem asChild>
+                  <a href={deal.url} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="w-4 h-4 mr-2" /> View original listing
+                  </a>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => onEditNotes(deal)}>
                 <FileText className="w-4 h-4 mr-2" /> Edit notes
               </DropdownMenuItem>
@@ -235,14 +370,7 @@ function DealCard({
         </div>
       </CardHeader>
       <CardContent className="pt-0 px-3 pb-3">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1 text-sm font-medium">
-              <DollarSign className="w-3.5 h-3.5 text-green-600" />
-              {deal.price ? deal.price.toLocaleString() : "—"}
-            </span>
-            <Badge className={scoreBadgeColor(deal.score)}>{deal.score || "—"}</Badge>
-          </div>
+        <div className="space-y-1.5">
           {deal.notes && <p className="text-xs text-gray-600 line-clamp-2">{deal.notes}</p>}
           {deal.updatedAt && (
             <div className="flex items-center gap-1 text-xs text-gray-400">
@@ -253,6 +381,88 @@ function DealCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// Tracked properties that aren't on the board yet, with one-click stage chips.
+function SavedSection({
+  deals,
+  stages,
+  highlightId,
+  onMove,
+  onView,
+}: {
+  deals: PipelineDeal[];
+  stages: PipelineStage[];
+  highlightId: string | null;
+  onMove: (deal: PipelineDeal, stageId: string) => void;
+  onView: (deal: PipelineDeal) => void;
+}) {
+  const { removeDeal } = useDealActions();
+  if (deals.length === 0) return null;
+  return (
+    <section className="mt-10">
+      <div className="mb-3 flex items-baseline gap-2">
+        <h2 className="flex items-center gap-1.5 text-base font-semibold text-brand-navy">
+          <Bookmark className="h-4 w-4" /> Saved — not in pipeline yet
+        </h2>
+        <span className="text-sm text-muted-foreground tabular-nums">{deals.length}</span>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+        {deals.map((deal) => (
+          <div
+            key={deal.id}
+            data-deal-id={deal.id}
+            className={cn(
+              "flex gap-3 rounded-xl border border-border bg-white p-2.5 shadow-sm",
+              highlightId === deal.id && "ring-2 ring-brand-orange ring-offset-2",
+            )}
+          >
+            <button type="button" onClick={() => onView(deal)} className="shrink-0" aria-label="View property">
+              <DealThumb deal={deal} className="h-20 w-24 rounded-lg" />
+            </button>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold tabular-nums text-brand-navy">
+                    {deal.price ? `$${deal.price.toLocaleString()}` : "Contact for price"}
+                  </p>
+                  <p className="truncate text-xs text-slate-600" title={deal.title}>{deal.title}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <PlatformChip platform={deal.platform} />
+                  {deal.score > 0 && <ScoreBadge investmentScorePercent={deal.score} size="sm" />}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-slate-400 hover:text-red-600"
+                    aria-label="Remove from saved"
+                    title="Remove from saved"
+                    onClick={() => removeDeal.mutate(deal.zpid)}
+                  >
+                    <BookmarkX className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1">
+                {stages.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => onMove(deal, s.id)}
+                    className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-slate-600 transition-colors hover:border-transparent hover:text-white"
+                    onMouseEnter={(e) => (e.currentTarget.style.background = s.color || "#3B82F6")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                  >
+                    <Plus className="h-3 w-3" /> {s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -277,9 +487,20 @@ function AddDealDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader><DialogTitle>Add a deal from saved properties</DialogTitle></DialogHeader>
         {unstaged.length === 0 ? (
-          <p className="text-sm text-slate-500 py-4">
-            Every saved property is already in your pipeline. Save more properties from search to add new deals.
-          </p>
+          <div className="space-y-3 py-2 text-sm text-slate-500">
+            <p>Every saved property is already in your pipeline.</p>
+            <p>
+              Find new deals in{" "}
+              <Link href="/property-search" className="font-medium text-brand-blue hover:underline" onClick={() => onOpenChange(false)}>
+                Property Search
+              </Link>{" "}
+              or{" "}
+              <Link href="/browse" className="font-medium text-brand-blue hover:underline" onClick={() => onOpenChange(false)}>
+                Browse
+              </Link>
+              {" "}— use “Add to pipeline” on any property.
+            </p>
+          </div>
         ) : (
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm">
@@ -360,7 +581,15 @@ function NotesForm({
   );
 }
 
-function DealDetails({ deal, stages }: { deal: PipelineDeal; stages: PipelineStage[] }) {
+function DealDetails({
+  deal,
+  stages,
+  onViewProperty,
+}: {
+  deal: PipelineDeal;
+  stages: PipelineStage[];
+  onViewProperty: (deal: PipelineDeal) => void;
+}) {
   const stage = stages.find((s) => s.id === deal.stageId);
   return (
     <div className="space-y-4">
@@ -395,12 +624,20 @@ function DealDetails({ deal, stages }: { deal: PipelineDeal; stages: PipelineSta
 
       <DocumentsSection dealId={deal.id} />
 
-      <a
-        href={`/property-details?zpid=${encodeURIComponent(deal.zpid)}`}
-        className="inline-flex items-center text-sm text-blue-600 hover:text-blue-700 font-medium"
-      >
-        View full property →
-      </a>
+      <div className="flex flex-wrap gap-2">
+        {deal.property && (
+          <Button variant="outline" size="sm" onClick={() => onViewProperty(deal)}>
+            <Eye className="mr-1.5 h-4 w-4" /> View full property
+          </Button>
+        )}
+        {deal.url && (
+          <Button variant="ghost" size="sm" asChild>
+            <a href={deal.url} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="mr-1.5 h-4 w-4" /> Original listing
+            </a>
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

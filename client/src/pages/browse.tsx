@@ -7,6 +7,7 @@ import { PropertyCard } from "@/components/property-card";
 import { PropertyDrawer } from "@/components/property-drawer";
 import { PropertyMap, propertyToMapPoint } from "@/components/property-map";
 import { PropertyTable } from "@/components/property-table";
+import { DealControl } from "@/components/deal-control";
 import { ScoreBadge } from "@/components/score-badge";
 import { EmptyState, ErrorState, PageHeader, PropertyGridSkeleton, PropertyImageFallback } from "@/components/states";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -510,6 +511,9 @@ export default function Browse() {
                         const p = byId.get(id);
                         if (p) openProperty(p);
                       }}
+                      renderAction={(id) => (
+                        <DealControl zpid={id} source={{ zpid: id }} block listingUrl={byId.get(id)?.url} />
+                      )}
                       height="calc(100vh - 15rem)"
                       className="min-h-[560px]"
                     />

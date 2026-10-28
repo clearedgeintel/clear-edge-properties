@@ -1274,7 +1274,11 @@ export const insertUserPropertySchema = createInsertSchema(userProperties).omit(
   addedAt: true,
   updatedAt: true,
 });
-export const updateUserPropertySchema = insertUserPropertySchema.partial();
+// Ownership columns are fixed at creation; PATCH must not be able to move a
+// deal to another tenant/user or repoint it at a different property.
+export const updateUserPropertySchema = insertUserPropertySchema
+  .omit({ tenantId: true, userId: true, zpid: true })
+  .partial();
 
 // Validation: white-label branding upsert (tenant_id supplied server-side)
 export const upsertBrandingSchema = createInsertSchema(whitelabelBranding)

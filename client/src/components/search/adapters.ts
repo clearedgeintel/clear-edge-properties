@@ -1,4 +1,6 @@
 import type { MapPoint } from '@/components/property-map';
+import type { DealSource } from '@/lib/deals';
+import { searchResultZpid } from '@shared/search-ids';
 import { formatHomeType } from '@/lib/format';
 import { isCommercialPlatform } from './platforms';
 
@@ -16,7 +18,6 @@ export interface SearchResult {
   properties: any[];
   errorMessages: string[];
   duplicates?: number;
-  saveMessage?: string;
 }
 
 /** A result row tagged with its platform and a stable id across platforms. */
@@ -25,6 +26,10 @@ export interface SearchItem {
   platform: string;
   raw: any;
   view: ResultView;
+  /** The catalog zpid this result maps to (matches server-side derivation). */
+  zpid: string;
+  /** Payload for POST /api/deals. */
+  dealSource: DealSource;
 }
 
 export interface ResultAgent {
@@ -120,14 +125,48 @@ export function readResult(p: any, platform: string): ResultView {
   };
 }
 
+/**
+ * Single-platform endpoints return each platform's own result shape (e.g. Zillow
+ * rows carry `zpid`, not `id`), so build the UnifiedProperty-shaped payload the
+ * server's toInsertProperty expects from the normalized view.
+ */
+function toDealResult(raw: any, platform: string, v: ResultView) {
+  const id = raw.id ?? raw.zpid;
+  return {
+    id: id != null ? String(id) : '',
+    platform,
+    address: { streetAddress: v.street, city: v.city, state: v.state, zipCode: v.zip },
+    propertyType: raw.propertyType || raw.homeType || undefined,
+    price: v.price ?? undefined,
+    sqft: v.sqft ?? undefined,
+    bedrooms: v.beds ?? undefined,
+    bathrooms: v.baths ?? undefined,
+    yearBuilt: v.yearBuilt ?? undefined,
+    capRate: v.capRate ?? undefined,
+    pricePerSqft: v.pricePerSqft ?? undefined,
+    score: v.score ?? undefined,
+    estimatedRoi: v.estimatedRoi != null ? String(v.estimatedRoi) : undefined,
+    images: v.image ? [v.image] : [],
+    listingUrl: v.listingUrl ?? undefined,
+    latitude: v.lat ?? undefined,
+    longitude: v.lng ?? undefined,
+  };
+}
+
 export function toSearchItems(results: SearchResult[]): SearchItem[] {
   return results.flatMap((r) =>
-    r.properties.map((raw, i) => ({
-      key: `${r.platform}:${raw.id ?? raw.zpid ?? i}`,
-      platform: r.platform,
-      raw,
-      view: readResult(raw, r.platform),
-    })),
+    r.properties.map((raw, i) => {
+      const view = readResult(raw, r.platform);
+      const result = toDealResult(raw, r.platform, view);
+      return {
+        key: `${r.platform}:${raw.id ?? raw.zpid ?? i}`,
+        platform: r.platform,
+        raw,
+        view,
+        zpid: searchResultZpid(result),
+        dealSource: { result, searchMarket: [view.city, view.state].filter(Boolean).join(', ') || undefined },
+      };
+    }),
   );
 }
 

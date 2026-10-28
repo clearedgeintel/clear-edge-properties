@@ -3,19 +3,16 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CalculationBreakdown } from "./calculation-breakdown";
-import { Heart, ChevronLeft, ChevronRight, FileText, Brain, Calculator, Building } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { useAuth } from "@/hooks/use-auth";
-import type { Property, UserProperty } from "@shared/schema";
+import { ChevronLeft, ChevronRight, FileText, Brain, Calculator, Building } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import type { Property } from "@shared/schema";
 import { formatPrice, formatCurrency } from "@/lib/format";
 import { ScoreBadge } from "./score-badge";
 import { LetterOfIntentModal } from "./letter-of-intent-modal";
 import { AICommentary } from "./ai-commentary";
 import { AIOfferHelper } from "./ai-offer-helper";
 import { AIUnderwriting } from "./ai-underwriting";
-import { AddToPipelineButton } from "./add-to-pipeline-button";
+import { DealControl } from "./deal-control";
 import { PropertyMap, propertyToMapPoint } from "./property-map";
 import { PropertyImageFallback } from "./states";
 
@@ -24,8 +21,6 @@ interface PropertyDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
-
-type TrackedItem = UserProperty & { property: Property | null };
 
 export function PropertyDrawer({ property, open, onOpenChange }: PropertyDrawerProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -37,17 +32,6 @@ export function PropertyDrawer({ property, open, onOpenChange }: PropertyDrawerP
   const [showLoiModal, setShowLoiModal] = useState(false);
   const [showOfferHelper, setShowOfferHelper] = useState(false);
   const [showUnderwriting, setShowUnderwriting] = useState(false);
-  const { toast } = useToast();
-  const { user, session } = useAuth();
-  const queryClient = useQueryClient();
-
-  // Tracked (watchlist) items; derive tracking status from the list by zpid.
-  const { data: watchlist } = useQuery<TrackedItem[]>({
-    queryKey: ['/api/watchlist'],
-    enabled: !!session,
-  });
-
-  const isTracked = !!property && !!watchlist?.some((item) => item.zpid === property.zpid);
 
   // Fetch comparable properties (same ZIP, exclude current)
   const { data: allProperties } = useQuery<Property[]>({
@@ -65,19 +49,6 @@ export function PropertyDrawer({ property, open, onOpenChange }: PropertyDrawerP
         )
         .slice(0, 4)
     : [];
-
-  const watchlistMutation = useMutation({
-    mutationFn: async ({ action, zpid }: { action: 'add' | 'remove', zpid: string }) => {
-      if (action === 'add') {
-        return apiRequest('POST', '/api/watchlist', { zpid });
-      } else {
-        return apiRequest('DELETE', `/api/watchlist/${zpid}`);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/watchlist'] });
-    },
-  });
 
   if (!property) return null;
 
@@ -99,28 +70,6 @@ export function PropertyDrawer({ property, open, onOpenChange }: PropertyDrawerP
 
   const selectImage = (index: number) => {
     setCurrentImageIndex(index);
-  };
-
-  const handleWatchlistToggle = async () => {
-    if (!property || !user) return;
-
-    try {
-      const action = isTracked ? 'remove' : 'add';
-      await watchlistMutation.mutateAsync({ action, zpid: property.zpid });
-
-      toast({
-        title: action === 'add' ? "Added to Watchlist" : "Removed from Watchlist",
-        description: action === 'add'
-          ? "Property added to your watchlist"
-          : "Property removed from your watchlist",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update watchlist",
-        variant: "destructive",
-      });
-    }
   };
 
   return (
@@ -344,26 +293,16 @@ export function PropertyDrawer({ property, open, onOpenChange }: PropertyDrawerP
             </div>
           )}
 
-          {/* Action Buttons */}
+          {/* Action Buttons. One pipeline control replaces the former separate
+              "Save" (watchlist) and "Add to Pipeline" buttons, which did the same thing. */}
           <div className="grid grid-cols-3 gap-3 pt-6 border-t border-slate-200">
-            <AddToPipelineButton
-              property={property}
-              variant="outline"
-              size="sm"
+            <DealControl
+              zpid={property.zpid}
+              source={{ zpid: property.zpid }}
+              variant="full"
+              listingUrl={property.url}
               className="col-span-3 mb-2"
             />
-            <Button
-              onClick={handleWatchlistToggle}
-              disabled={watchlistMutation.isPending}
-              variant={isTracked ? "outline" : "default"}
-              className={`w-full ${isTracked
-                ? 'border-red-300 text-red-700 hover:bg-red-50'
-                : 'bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white border-0'
-              }`}
-            >
-              <Heart className={`mr-2 h-4 w-4 ${isTracked ? 'fill-current' : ''}`} />
-              {isTracked ? 'Remove' : 'Save'}
-            </Button>
 
             <Button
               onClick={() => setShowOfferHelper(true)}

@@ -1,3 +1,4 @@
+import { searchResultZpid } from '@shared/search-ids';
 import { zillowIntegration, ZillowSearchRequest } from './zillow';
 import { loopNetApi, LoopNetSearchRequest } from './loopnet-api';
 import { redfinApi, RedfinSearchRequest } from './redfin-api';
@@ -92,14 +93,8 @@ export interface UnifiedSearchResult {
 // accepts an array of these and maps each onto the NEW `properties` columns.
 export type SearchResult = UnifiedProperty;
 
-// Build a unique-ish zpid for a live result. Zillow gives a real zpid; the other
-// platforms supply their own listing id, so we namespace it to avoid collisions
-// with Zillow ids on the shared zpid PK.
-export function searchResultZpid(result: SearchResult): string {
-  const raw = (result.id ?? '').toString().trim();
-  if (!raw) return '';
-  return result.platform === 'zillow' ? raw : `${result.platform}-${raw}`;
-}
+// zpid derivation is shared with the client (see shared/search-ids.ts).
+export { searchResultZpid };
 
 // Map a normalized live search result onto an InsertProperty row (NEW schema).
 // Numeric columns are text in the DB, so numbers are stringified. Required NOT
@@ -133,6 +128,8 @@ export function toInsertProperty(result: SearchResult, searchMarket?: string): I
       result.estimatedRoi != null && result.estimatedRoi !== '' ? result.estimatedRoi : null,
     imgMain: Array.isArray(result.images) && result.images.length > 0 ? result.images[0] : null,
     url: result.listingUrl || null,
+    latitude: result.latitude != null ? result.latitude.toString() : null,
+    longitude: result.longitude != null ? result.longitude.toString() : null,
   };
 }
 

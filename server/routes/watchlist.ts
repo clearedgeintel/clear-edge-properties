@@ -3,6 +3,9 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { requireAuth, requireSubscription } from "./middleware";
 import { updateUserPropertySchema } from "@shared/schema";
+import { searchResultZpid } from "@shared/search-ids";
+import { toInsertProperty, type SearchResult } from "../lib/multi-platform-search";
+import { enrichFirstImports, DEFAULT_ENRICH_SCORE_THRESHOLD } from "../lib/enrichment";
 
 const router = Router();
 
@@ -101,6 +104,78 @@ router.get('/api/deals', requireAuth, async (req: any, res) => {
       property: item.property,
     }));
     res.json(deals);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Create (or update) a deal from anywhere: a catalog property by zpid, or a
+// live search result that isn't in the catalog yet (it's upserted first, the
+// same way POST /api/search/save does). One call takes a property from search
+// straight onto the board.
+//   pipelineStageId omitted → first stage (but never moves an existing deal)
+//   pipelineStageId null    → save only (tracked, not on the board)
+//   pipelineStageId <uuid>  → that stage (must belong to the tenant)
+const createDealSchema = z
+  .object({
+    zpid: z.string().min(1).optional(),
+    result: z
+      .object({ id: z.union([z.string(), z.number()]), platform: z.string().min(1) })
+      .passthrough()
+      .optional(),
+    searchMarket: z.string().optional(),
+    pipelineStageId: z.string().uuid().nullable().optional(),
+  })
+  .refine((b) => b.zpid || b.result, { message: "zpid or result is required" });
+
+router.post('/api/deals', requireAuth, async (req: any, res) => {
+  try {
+    const { tenantId, userId } = req.ctx;
+    const body = createDealSchema.parse(req.body);
+
+    let zpid = body.zpid ?? "";
+    if (body.result) {
+      const result = body.result as unknown as SearchResult;
+      const insert = toInsertProperty(result, body.searchMarket);
+      if (!insert.zpid) return res.status(400).json({ error: "Result has no id" });
+      zpid = insert.zpid;
+      // Upserts the catalog row and tracks it for this user.
+      const saved = await storage.saveSearchResults(tenantId, userId, [insert]);
+      if (saved.newZpids.includes(zpid)) {
+        void enrichFirstImports(
+          [{ zpid, platform: result.platform, score: result.score ?? null }],
+          DEFAULT_ENRICH_SCORE_THRESHOLD,
+        ).catch((e) => console.error("Background enrichment error:", e));
+      }
+    } else {
+      if (!(await storage.getProperty(zpid))) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+      await storage.addUserProperty(tenantId, userId, zpid);
+    }
+
+    const tracked = (await storage.getUserProperties(tenantId, userId)).find((d) => d.zpid === zpid);
+    if (!tracked) return res.status(500).json({ error: "Failed to track property" });
+
+    let stageId: string | null | undefined;
+    if (body.pipelineStageId === null) {
+      stageId = null;
+    } else if (body.pipelineStageId) {
+      const stages = await storage.getPipelineStages(tenantId);
+      if (!stages.some((s) => s.id === body.pipelineStageId)) {
+        return res.status(400).json({ error: "Unknown pipeline stage" });
+      }
+      stageId = body.pipelineStageId;
+    } else if (!tracked.pipelineStageId) {
+      const [first] = await storage.getPipelineStages(tenantId);
+      stageId = first?.id ?? null;
+    }
+
+    if (stageId !== undefined && stageId !== tracked.pipelineStageId) {
+      const updated = await storage.updateUserProperty(tenantId, tracked.id, { pipelineStageId: stageId });
+      return res.json({ ...updated, property: tracked.property });
+    }
+    res.json(tracked);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }

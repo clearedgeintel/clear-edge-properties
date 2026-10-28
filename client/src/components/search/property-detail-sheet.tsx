@@ -4,6 +4,7 @@ import { ExternalLink, Loader2, Phone, RefreshCw, Star, User } from 'lucide-reac
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScoreBadge } from '@/components/score-badge';
+import { DealControl } from '@/components/deal-control';
 import { PropertyImageFallback } from '@/components/states';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -108,6 +109,8 @@ function SheetBody({ item }: { item: SearchItem }) {
             {v.score != null && <ScoreBadge investmentScorePercent={v.score} size="lg" showLabel />}
           </div>
         </SheetHeader>
+
+        <DealControl zpid={item.zpid} source={item.dealSource} variant="full" listingUrl={v.listingUrl} />
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {stats.map((s) => (
