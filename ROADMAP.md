@@ -1,5 +1,7 @@
 # RealDealTracker - Forward Plan
 
+> **Superseded:** open work is now tracked in [PUNCH_LIST.md](PUNCH_LIST.md) (reviewed 2026-10-31). This file is kept as a historical record.
+
 ## Current State (Post-Cleanup, March 2026)
 - React 18 + Express + PostgreSQL (Neon) + Drizzle ORM
 - Supabase Auth, Stripe subscriptions, OpenAI integration

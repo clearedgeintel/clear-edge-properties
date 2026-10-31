@@ -1,5 +1,7 @@
 # Re-platform Plan — App → Supabase `ClearEdgeProperties`
 
+> **Superseded:** open work is now tracked in [PUNCH_LIST.md](PUNCH_LIST.md) (reviewed 2026-10-31). This file is kept as a historical record.
+
 **Decision (2026-05-31):** Adopt the Supabase `ClearEdgeProperties` schema as source of truth; re-platform the app's data layer onto it. See [SCHEMA_RECONCILIATION.md](SCHEMA_RECONCILIATION.md).
 
 ## Surface area

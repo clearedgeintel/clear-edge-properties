@@ -1,5 +1,7 @@
 # ClearEdgeProps — Validated Roadmap
 
+> **Superseded:** open work is now tracked in [PUNCH_LIST.md](PUNCH_LIST.md) (reviewed 2026-10-31). This file is kept as a historical record.
+
 **Date:** 2026-05-30
 **Author:** Claude (Anthropic) — independent verification of the Grok review against the actual codebase, plus a corrected forward plan.
 **Method:** 6 parallel code-auditors read the real files; every Grok claim was checked against source (line counts, grep, file reads). Findings below are evidence-backed, not restated assertions.

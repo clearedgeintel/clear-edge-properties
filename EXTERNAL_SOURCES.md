@@ -1,5 +1,7 @@
 # External Sources & Integrations — ClearEdge (post-Supabase re-platform)
 
+> **Status is out of date:** this file is still a useful reference for each integration, but the current status of keys and open work is in [PUNCH_LIST.md](PUNCH_LIST.md) (reviewed 2026-10-31).
+
 **Updated:** 2026-05-31. Status reflects the current `.env`.
 
 ## Summary of what works right now

@@ -1,5 +1,7 @@
 # Schema Reconciliation — App (Drizzle/Neon) vs Supabase `ClearEdgeProperties`
 
+> **Superseded:** open work is now tracked in [PUNCH_LIST.md](PUNCH_LIST.md) (reviewed 2026-10-31). This file is kept as a historical record.
+
 **Date:** 2026-05-31
 **Purpose:** Decide how the RealDealTracker app code relates to the existing Supabase `ClearEdgeProperties` project (`oqqmaipbieirijzlscls`) before any DB move.
 
